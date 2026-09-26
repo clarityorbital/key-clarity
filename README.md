@@ -2,7 +2,18 @@
 
 Switch Claude Code and Codex between your [LiteLLM](https://github.com/BerriAI/litellm) virtual keys in one click, and see each key's spend, budget and expiry without leaving VS Code.
 
-> Status: early (0.1.0). Not yet on the Marketplace. Install from a `.vsix` (see [Development](#development)).
+> Status: early (0.1.0). Not on the Marketplace yet.
+
+## Install
+
+1. Download `key-clarity.vsix` from the [latest release](https://github.com/clarityorbital/key-clarity/releases/latest).
+2. In VS Code, open the Extensions view, click **…** at the top, choose **Install from VSIX…**, and pick the file.
+   From a terminal instead: `code --install-extension key-clarity.vsix`.
+3. Look for the key icon (**Key Clarity**) in the Activity Bar. If it isn't there, run **Developer: Reload Window**.
+
+**Dev containers and SSH:** install from a window connected to the container or host, where Claude Code and Codex run. Key Clarity runs there and edits the config files on that machine.
+
+**Trying it safely:** "Use for Claude Code" switches every Claude Code session on that machine, including ones already running. For a first test, right-click a key, choose **Use for Claude Code in This Workspace Only**, and use a scratch folder. **Stop Managing…** in the view's **…** menu undoes it.
 
 ## What it does
 
@@ -78,7 +89,7 @@ npm install
 npm test               # unit tests, including a mock LiteLLM proxy
 npm run test:e2e       # real claude / codex CLIs against the mock proxy (skipped if not installed)
 npm run test:vscode    # the extension inside a headless VS Code (needs a display, e.g. Xvfb)
-npm run package        # builds dist/key-clarity.vsix
+npm run package        # builds dist/key-clarity.vsix (attach it to a GitHub release for others)
 code --install-extension dist/key-clarity.vsix
 ```
 
