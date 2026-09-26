@@ -1,0 +1,353 @@
+{
+  "name": "key-clarity",
+  "displayName": "Key Clarity",
+  "description": "Switch Claude Code and Codex between your LiteLLM virtual keys in one click, with spend and budget at a glance.",
+  "version": "0.1.0",
+  "publisher": "clarityorbital",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clarityorbital/key-clarity"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "litellm",
+    "claude code",
+    "codex",
+    "api key"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "keyClarity",
+          "title": "Key Clarity",
+          "icon": "media/key.svg"
+        }
+      ]
+    },
+    "views": {
+      "keyClarity": [
+        {
+          "id": "keyClarity.keys",
+          "name": "Keys"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "keyClarity.keys",
+        "contents": "Connect to your LiteLLM proxy to get started.\n[Set Up Proxy](command:keyClarity.setupProxy)",
+        "when": "!keyClarity.proxyConfigured"
+      },
+      {
+        "view": "keyClarity.keys",
+        "contents": "No keys yet.\n[Add Existing Key](command:keyClarity.addKey)\n[Generate New Key](command:keyClarity.generateKey)",
+        "when": "keyClarity.proxyConfigured"
+      }
+    ],
+    "commands": [
+      {
+        "command": "keyClarity.setupProxy",
+        "title": "Set Up Proxy",
+        "category": "Key Clarity",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "keyClarity.addKey",
+        "title": "Add Existing Key",
+        "category": "Key Clarity",
+        "icon": "$(add)"
+      },
+      {
+        "command": "keyClarity.generateKey",
+        "title": "Generate New Key",
+        "category": "Key Clarity",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "keyClarity.refresh",
+        "title": "Refresh",
+        "category": "Key Clarity",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "keyClarity.switchKey",
+        "title": "Switch Key",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.activateBoth",
+        "title": "Use for Claude Code and Codex",
+        "category": "Key Clarity",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "keyClarity.activateClaude",
+        "title": "Use for Claude Code",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.activateClaudeWorkspace",
+        "title": "Use for Claude Code in This Workspace Only",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.activateCodex",
+        "title": "Use for Codex",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.chooseCodexModel",
+        "title": "Choose Codex Model",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.copyKey",
+        "title": "Copy Key",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.renameKey",
+        "title": "Rename",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.forgetKey",
+        "title": "Remove from Key Clarity",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.deleteKeyOnProxy",
+        "title": "Delete on Proxy…",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.setAccountKey",
+        "title": "Set Account Key",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.deactivateClaude",
+        "title": "Stop Managing Claude Code",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.deactivateClaudeWorkspace",
+        "title": "Stop Managing Claude Code in This Workspace",
+        "category": "Key Clarity"
+      },
+      {
+        "command": "keyClarity.deactivateCodex",
+        "title": "Stop Managing Codex",
+        "category": "Key Clarity"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "keyClarity.addKey",
+          "when": "view == keyClarity.keys",
+          "group": "navigation@1"
+        },
+        {
+          "command": "keyClarity.generateKey",
+          "when": "view == keyClarity.keys",
+          "group": "navigation@2"
+        },
+        {
+          "command": "keyClarity.refresh",
+          "when": "view == keyClarity.keys",
+          "group": "navigation@3"
+        },
+        {
+          "command": "keyClarity.setupProxy",
+          "when": "view == keyClarity.keys",
+          "group": "navigation@4"
+        },
+        {
+          "command": "keyClarity.setAccountKey",
+          "when": "view == keyClarity.keys",
+          "group": "1_account"
+        },
+        {
+          "command": "keyClarity.chooseCodexModel",
+          "when": "view == keyClarity.keys",
+          "group": "2_codex"
+        },
+        {
+          "command": "keyClarity.deactivateClaude",
+          "when": "view == keyClarity.keys",
+          "group": "3_stop@1"
+        },
+        {
+          "command": "keyClarity.deactivateClaudeWorkspace",
+          "when": "view == keyClarity.keys && workspaceFolderCount > 0",
+          "group": "3_stop@2"
+        },
+        {
+          "command": "keyClarity.deactivateCodex",
+          "when": "view == keyClarity.keys",
+          "group": "3_stop@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "keyClarity.activateBoth",
+          "when": "view == keyClarity.keys && viewItem == heldKey",
+          "group": "inline"
+        },
+        {
+          "command": "keyClarity.activateBoth",
+          "when": "view == keyClarity.keys && viewItem == heldKey",
+          "group": "1_use@1"
+        },
+        {
+          "command": "keyClarity.activateClaude",
+          "when": "view == keyClarity.keys && viewItem == heldKey",
+          "group": "1_use@2"
+        },
+        {
+          "command": "keyClarity.activateClaudeWorkspace",
+          "when": "view == keyClarity.keys && viewItem == heldKey && workspaceFolderCount > 0",
+          "group": "1_use@3"
+        },
+        {
+          "command": "keyClarity.activateCodex",
+          "when": "view == keyClarity.keys && viewItem == heldKey",
+          "group": "1_use@4"
+        },
+        {
+          "command": "keyClarity.copyKey",
+          "when": "view == keyClarity.keys && viewItem == heldKey",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "keyClarity.renameKey",
+          "when": "view == keyClarity.keys && viewItem == heldKey",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "keyClarity.forgetKey",
+          "when": "view == keyClarity.keys && viewItem == heldKey",
+          "group": "3_remove@1"
+        },
+        {
+          "command": "keyClarity.deleteKeyOnProxy",
+          "when": "view == keyClarity.keys && viewItem =~ /^(heldKey|remoteKey)$/",
+          "group": "3_remove@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "keyClarity.activateBoth",
+          "when": "false"
+        },
+        {
+          "command": "keyClarity.activateClaude",
+          "when": "false"
+        },
+        {
+          "command": "keyClarity.activateClaudeWorkspace",
+          "when": "false"
+        },
+        {
+          "command": "keyClarity.activateCodex",
+          "when": "false"
+        },
+        {
+          "command": "keyClarity.copyKey",
+          "when": "false"
+        },
+        {
+          "command": "keyClarity.renameKey",
+          "when": "false"
+        },
+        {
+          "command": "keyClarity.forgetKey",
+          "when": "false"
+        },
+        {
+          "command": "keyClarity.deleteKeyOnProxy",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Key Clarity",
+      "properties": {
+        "keyClarity.proxyUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Base URL of your LiteLLM proxy, for example `https://litellm.example.com`. Set it with **Key Clarity: Set Up Proxy**."
+        },
+        "keyClarity.refreshIntervalMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "How often to refresh spend and budget for your keys."
+        },
+        "keyClarity.budgetWarningPercent": {
+          "type": "number",
+          "default": 90,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Warn when a key has used this percentage of its budget."
+        },
+        "keyClarity.expiryWarningDays": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "description": "Warn when a key expires within this many days."
+        },
+        "keyClarity.claude.helperTtlMs": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 0,
+          "markdownDescription": "How often Claude Code re-reads the active key (written as `CLAUDE_CODE_API_KEY_HELPER_TTL_MS`). Set to 0 to leave Claude Code's default of five minutes."
+        },
+        "keyClarity.codex.providerId": {
+          "type": "string",
+          "default": "key-clarity",
+          "markdownDescription": "Provider id written to `~/.codex/config.toml` under `[model_providers.<id>]`."
+        },
+        "keyClarity.terminal.exportVariables": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Also set `LITELLM_PROXY_URL`, `LITELLM_PROXY_API_KEY`, `OPENAI_BASE_URL` and `OPENAI_API_KEY` in new integrated terminals, using the key active for Codex. Off by default because it places the key in terminal environments."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run -c vitest.e2e.config.mts",
+    "test:vscode": "npm run build && node test/vscode/runTest.mjs",
+    "package": "npm run typecheck && npm run build -- --production && vsce package --skip-license --out dist/key-clarity.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1",
+    "smol-toml": "^1.3.0"
+  }
+}

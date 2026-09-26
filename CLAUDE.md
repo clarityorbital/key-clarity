@@ -1,6 +1,13 @@
 # Key Clarity
 
-A public research report, and later possibly a VS Code extension, for managing LiteLLM virtual keys across Claude Code and Codex. The report is `README.md`.
+A VS Code extension that switches Claude Code and Codex between LiteLLM virtual keys. `README.md` is the extension's user docs; the original research report is `docs/report.md`.
+
+## Layout and commands
+
+- `src/proxy`, `src/keys`, `src/targets` are pure Node with no `vscode` imports, and are unit-tested. `src/controller.ts` and `src/ui/*` use the VS Code API.
+- `npm test` runs unit tests. `npm run test:e2e` runs the real `claude` and `codex` CLIs against `test/mockProxy.ts`; set `CODEX_BIN` if `codex` isn't on PATH. `npm run test:vscode` runs the extension in a headless VS Code; it needs a display, so start `Xvfb :99 &` and set `DISPLAY=:99`.
+- `npm run package` builds `dist/key-clarity.vsix`.
+- The bundler must keep `mainFields: ["module", "main"]`. Without it, jsonc-parser's UMD build breaks at runtime.
 
 ## GitHub
 

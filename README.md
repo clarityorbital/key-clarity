@@ -1,88 +1,85 @@
 # Key Clarity
 
-**Managing LiteLLM virtual keys for Claude Code and Codex in VS Code: a landscape survey and a proposed extension.**
+Switch Claude Code and Codex between your [LiteLLM](https://github.com/BerriAI/litellm) virtual keys in one click, and see each key's spend, budget and expiry without leaving VS Code.
 
-*As of September 2026. Status: research and design only. Nothing is built yet.*
+> Status: early (0.1.0). Not yet on the Marketplace. Install from a `.vsix` (see [Development](#development)).
 
-## TL;DR
+## What it does
 
-Teams that route coding agents through a [LiteLLM](https://github.com/BerriAI/litellm) proxy often end up with many virtual keys: one per project, per budget, or per model set. Switching the key that Claude Code or Codex uses means hand-editing config files and restarting.
+- **One list of your keys.** A **Key Clarity** view in the Activity Bar shows every key you've added, with spend against budget and days until expiry. Your other keys on the proxy appear under **Other keys on the proxy**.
+- **Add or create keys.** Paste an existing key, or generate a new one with a name, allowed models, budget and expiry.
+- **One-click switching** for Claude Code, Codex, or both. This covers the VS Code panels and the `claude` and `codex` commands, because each tool's panel and CLI read the same config file.
+- **Per-workspace keys for Claude Code**, so each repo can bill to its own key.
+- **Status bar badge**, such as `alpha · $12.40 / $50.00`. Click it to switch.
+- **Warnings** when a key in use is near its budget, near expiry, or blocked.
+- **Clean undo.** *Stop Managing Claude Code / Codex* puts your settings back the way they were.
 
-No existing VS Code extension covers all three of these:
+## Getting started
 
-1. List and create your LiteLLM keys and show their spend.
-2. Keep the keys in secure storage.
-3. Point **both** the Claude Code and Codex VS Code extensions (and their CLIs) at the chosen key in one click.
+1. Run **Key Clarity: Set Up Proxy** and enter your proxy's base URL, such as `https://litellm.example.com`.
+2. Click **+** in the Key Clarity view and paste a key, or click the sparkle icon to generate one.
+3. Choose **Use for Claude Code and Codex**.
+4. Start a new Claude Code session and restart Codex. After this first setup, switching keys needs no restart: according to both tools' docs, running sessions re-read the key within about a minute.
 
-The pieces exist separately. This repo proposes the glue: a small VS Code extension called **Key Clarity**.
+If the Claude Code panel still asks you to sign in, accept Key Clarity's offer to turn on `claudeCode.disableLoginPrompt`.
 
-## What exists today
+## How it works
 
-| Tool | Kind | What it does | Gap |
-| --- | --- | --- | --- |
-| [cc-switch](https://github.com/farion1231/cc-switch) | Desktop app (Tauri), MIT, ~137k stars | Switches Claude Code, Codex, Gemini CLI and others between providers by rewriting their config files. Can make the Claude Code VS Code extension follow its switches. | Not a VS Code extension. Knows nothing about LiteLLM, so it can't create keys or show spend. |
-| [Claude Code API Switcher](https://marketplace.visualstudio.com/items?itemName=xiaomila.claude-api-switcher) | VS Code extension, ~1.7k installs | Status bar and sidebar for switching Claude Code provider presets. Writes to `~/.claude/settings.json`. | Claude Code only, no Codex. Keys are kept in a plain-text file. |
-| [Claude Code Switcher](https://github.com/manuj10/claude-code-switcher) | VS Code extension | Toggles Claude Code between a subscription and a single API key. | macOS only, one key, no custom base URL. |
-| [LiteLLM VS Code extension](https://github.com/BerriAI/litellm/pull/41865) | Official, merged Sep 2026 | Adds LiteLLM models to VS Code's built-in Chat model picker. The key is kept in VS Code SecretStorage. | Doesn't configure Claude Code or Codex (stated in the PR). |
-| [LiteLLM `lite` CLI](https://docs.litellm.ai/docs/proxy/management_cli) | Official CLI | `lite login` signs in with SSO. `lite keys generate/list/delete/info` manages keys. `lite claude` / `lite codex` launch the agents with `ANTHROPIC_*` / `OPENAI_*` set. Keys are kept in the OS keychain. | Only affects processes it launches. The VS Code extension panels never see the key. |
-| [LiteLLM Claude Code Gateway](https://docs.litellm.ai/docs/tutorials/claude_code_gateway) | Proxy feature | Claude Code signs in through LiteLLM SSO and gets a 24-hour token. | Needs admin setup on the proxy. Claude only. One identity, not a choice between keys. |
+Key Clarity never writes a key into Claude Code or Codex config. Each tool instead gets a small command that reads the active key from a file:
 
-## Proposed extension: Key Clarity
+| Tool | What Key Clarity writes | How the key is read |
+| --- | --- | --- |
+| Claude Code | `~/.claude/settings.json`: `env.ANTHROPIC_BASE_URL`, `apiKeyHelper`, `env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS` | `apiKeyHelper` runs `cat ~/.key-clarity/claude.key` |
+| Claude Code, one workspace | `<workspace>/.claude/settings.local.json`, same keys | `cat ~/.key-clarity/workspaces/<name>-<id>.key` |
+| Codex | `~/.codex/config.toml`: `[model_providers.key-clarity]` plus root `model_provider` (and `model`, if you pick one) | `[model_providers.key-clarity.auth]` runs `cat ~/.key-clarity/codex.key` |
 
-A VS Code extension (TypeScript) with a key list in the sidebar and one-click switching for Claude Code and Codex.
+- **Where keys live.** Keys are kept in VS Code's secret storage. The key in use for each tool is also mirrored to a `0600` file in `~/.key-clarity` (a `0700` folder). That's the same protection Claude Code and Codex give their own credential files, and it lets the CLIs read the key when VS Code isn't running.
+- **Edits keep your settings.** Only the keys listed above change. Comments, formatting, hooks, MCP servers and everything else are left alone. Each edit is re-parsed and checked before it's written.
+- **Backups and undo.** Before its first change to a file, Key Clarity saves a copy next to it as `*.key-clarity-backup`. It also records the values it replaced and restores them when you stop managing that tool.
+- **Conflicting credentials.** Claude Code uses `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and cloud-provider settings before `apiKeyHelper`. Key Clarity warns if any of these is set, and offers to remove it from `settings.json`. It comes back when you stop managing Claude Code.
+- **Workspace settings stay out of git.** If `.claude/settings.local.json` isn't ignored, Key Clarity offers to add it to `.git/info/exclude`. The file holds your proxy URL, not the key.
 
-1. **Connect to your proxy.** Enter the LiteLLM base URL and a personal key once. It's stored in VS Code `SecretStorage`.
-2. **Key list in the sidebar.** Shows alias, allowed models, spend against budget, and expiry for each key (`/key/list`, `/key/info`). Actions: generate a new key (alias, models, budget, duration → `/key/generate`), rename, delete, copy. Keys pasted in by hand appear too, marked "local".
-3. **Activate a key for Claude Code, Codex, or both.**
-   - **Claude Code:** in `~/.claude/settings.json`, set `env.ANTHROPIC_BASE_URL` and point `apiKeyHelper` at a small script that prints the active key, so the key never lands in the file. The file is shared by the VS Code extension and the CLI.
-   - **Codex:** in `~/.codex/config.toml`, add `[model_providers.litellm]` with `base_url = "<proxy>/v1"` and set `model_provider`. The file is shared by the IDE extension and the CLI.
-   - **Integrated terminals:** use `environmentVariableCollection` to set the key variables in new terminals, so `claude` and `codex` commands follow along.
-4. **Per-project keys (optional).** Write `.claude/settings.local.json` and `.codex/config.toml` in the workspace instead, so each repo bills to its own key.
-5. **Status bar badge,** such as `LiteLLM: proj-x · $12/$50`. Clicking it opens a quick picker to switch keys.
-6. **Safety.** Back up config files before the first write. Merge rather than overwrite, so hooks, MCP servers and other settings are kept. Refuse to write a key into a git-tracked file. Warn when a key is near its budget or expiry.
-7. **Restart prompt.** Running agent sessions read their config at startup, so offer to restart them after a switch.
+## Commands
 
-### How it plugs in
+| Command | What it does |
+| --- | --- |
+| Key Clarity: Set Up Proxy | Set the LiteLLM proxy URL |
+| Key Clarity: Add Existing Key / Generate New Key | Store a key, or create one on the proxy |
+| Key Clarity: Switch Key | Pick a key, then Claude Code, Codex, or both |
+| Key Clarity: Choose Codex Model | Pick from the models the Codex key may call |
+| Key Clarity: Set Account Key | Optional separate key used to list and create keys |
+| Key Clarity: Stop Managing Claude Code / Codex | Undo Key Clarity's changes for that tool |
 
-```mermaid
-flowchart LR
-    P["LiteLLM proxy"] -- "keys + spend" --> E["Key Clarity<br/>(VS Code extension)"]
-    E --> C1["~/.claude/settings.json<br/>base URL + apiKeyHelper"]
-    E --> C2["~/.codex/config.toml<br/>litellm provider"]
-    E --> C3["Terminal environment<br/>key as env vars"]
-    C1 --> T1["Claude Code<br/>VS Code panel + CLI"]
-    C2 --> T2["Codex<br/>VS Code panel + CLI"]
-    C3 --> T3["claude / codex<br/>commands in terminals"]
+Right-click a key for Rename, Copy Key, Remove from Key Clarity, and Delete on Proxy.
+
+## Settings
+
+| Setting | Default | |
+| --- | --- | --- |
+| `keyClarity.proxyUrl` | | LiteLLM proxy base URL |
+| `keyClarity.refreshIntervalMinutes` | `5` | How often spend is refreshed |
+| `keyClarity.budgetWarningPercent` | `90` | Warn at this share of a key's budget |
+| `keyClarity.expiryWarningDays` | `3` | Warn this many days before expiry |
+| `keyClarity.claude.helperTtlMs` | `60000` | How often Claude Code re-reads the key (`0` keeps Claude Code's 5-minute default) |
+| `keyClarity.codex.providerId` | `key-clarity` | Codex provider id |
+| `keyClarity.terminal.exportVariables` | `false` | Also set `LITELLM_PROXY_*` and `OPENAI_*` in new terminals |
+
+## Limitations
+
+- **Creating keys** needs permission on the proxy. By default LiteLLM only lets admins create keys; an admin can allow other roles with `key_generation_settings`. Adding existing keys always works.
+- **Per-workspace keys are Claude Code only.** Codex doesn't let project config change providers or credentials.
+- **Codex needs the Responses API** (`wire_api = "responses"`) on your proxy, which current LiteLLM versions provide.
+- **Windows** is untested. Claude Code's helper runs `cat` through Git Bash; Codex's runs `cmd /c type`.
+
+## Development
+
+```bash
+npm install
+npm test               # unit tests, including a mock LiteLLM proxy
+npm run test:e2e       # real claude / codex CLIs against the mock proxy (skipped if not installed)
+npm run test:vscode    # the extension inside a headless VS Code (needs a display, e.g. Xvfb)
+npm run package        # builds dist/key-clarity.vsix
+code --install-extension dist/key-clarity.vsix
 ```
 
-## Known risks and open technical questions
-
-- **Codex key delivery to the IDE extension.** Codex custom providers read the key from an environment variable (`env_key`). VS Code extensions can't change the environment of another extension's process, so the Codex panel may only see the key if VS Code was launched with it. Solutions still to evaluate: a Codex-supported way to supply the token from config, or a small local forwarding proxy.
-- **Codex IDE extension and custom providers.** There are reported bugs where the IDE extension ignores a custom provider or model that the CLI honours ([openai/codex#4558](https://github.com/openai/codex/issues/4558), [#6963](https://github.com/openai/codex/issues/6963)). Test against current versions.
-- **Self-service key creation.** By default, LiteLLM only lets `proxy_admin` generate keys. An admin has to allow other roles through `key_generation_settings` ([docs](https://docs.litellm.ai/docs/proxy/virtual_keys)). The extension should hide "Generate" when the proxy refuses.
-- **SSO instead of pasted keys.** If the proxy has CLI SSO enabled, the extension could reuse the `lite login` flow.
-
-## Stopgap today
-
-- **Terminal:** `lite claude` / `lite codex` start either agent against your proxy with a chosen key.
-- **VS Code panels:** cc-switch can rewrite the config files by hand, with a LiteLLM endpoint entered as a custom provider.
-
-## Later ideas
-
-- Shared team presets: key aliases and model sets, with no secrets.
-- Automatic rotation of expiring keys.
-- A per-key model picker (`/model_group/info`).
-- Cursor and Windsurf support (both run VS Code extensions).
-
-## Sources
-
-- [cc-switch](https://github.com/farion1231/cc-switch)
-- [Claude Code API Switcher](https://marketplace.visualstudio.com/items?itemName=xiaomila.claude-api-switcher)
-- [Claude Code Switcher](https://github.com/manuj10/claude-code-switcher)
-- [LiteLLM VS Code extension, PR #41865](https://github.com/BerriAI/litellm/pull/41865)
-- [LiteLLM Proxy CLI](https://docs.litellm.ai/docs/proxy/management_cli)
-- [LiteLLM Claude Code Gateway](https://docs.litellm.ai/docs/tutorials/claude_code_gateway)
-- [LiteLLM virtual keys](https://docs.litellm.ai/docs/proxy/virtual_keys)
-- [Claude Code in VS Code](https://code.claude.com/docs/en/vs-code)
-- [Codex config basics](https://learn.chatgpt.com/docs/config-file/config-basic)
-- [openai/codex#4558](https://github.com/openai/codex/issues/4558), [openai/codex#6963](https://github.com/openai/codex/issues/6963)
+Background research: [docs/report.md](docs/report.md).
