@@ -167,6 +167,19 @@ export async function run(): Promise<void> {
       assert.equal(existsSync(path.join(keyHome, "codex.key")), false);
     });
 
+    await step("shows a key limited to model calls as working, without spend", async () => {
+      const limitedSecret = proxy.seed("model-calls-only", "user-2", { allowed_routes: ["llm_api_routes"], models: ["gpt-6-sol"] });
+      const limited = await controller.store.add(limitedSecret, "model-calls-only");
+      await controller.refresh();
+      assert.deepEqual(controller.status.get(limited.hash), { limited: { models: ["gpt-6-sol"] } });
+      const node = (await tree.getChildren()).find((n) => n.kind === "held" && n.key.alias === "model-calls-only");
+      assert.ok(node);
+      assert.equal(tree.getTreeItem(node).description, "spend not shown");
+      await controller.activateCodex(limited.hash);
+      assert.equal(await readFile(path.join(keyHome, "codex.key"), "utf8"), limitedSecret + "\n");
+      await controller.deactivateCodex();
+    });
+
     await step("runs the refresh command without error", async () => {
       await vscode.commands.executeCommand("keyClarity.refresh");
     });

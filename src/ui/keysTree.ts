@@ -56,12 +56,18 @@ export class KeysTreeProvider implements vscode.TreeDataProvider<KeyNode> {
       parts.push(budgetText(status.info));
       const exp = expiryText(status.info);
       if (exp) parts.push(exp);
+    } else if (status?.limited) {
+      parts.push("spend not shown");
     } else if (status?.error) {
       parts.push("can't reach proxy or key invalid");
     }
     item.description = parts.join(" · ");
     item.tooltip = new vscode.MarkdownString(
-      status?.info ? detailsTable(maskKey(key.secret), status.info, active) : `**${escape(key.alias)}** \`${maskKey(key.secret)}\`\n\n${escape(status?.error ?? "Not checked yet.")}`,
+      status?.info
+        ? detailsTable(maskKey(key.secret), status.info, active)
+        : status?.limited
+          ? limitedTooltip(key.alias, maskKey(key.secret), status.limited.models, active)
+          : `**${escape(key.alias)}** \`${maskKey(key.secret)}\`\n\n${escape(status?.error ?? "Not checked yet.")}`,
     );
     const pct = status?.info ? budgetPercent(status.info) : undefined;
     const threshold = vscode.workspace.getConfiguration("keyClarity").get<number>("budgetWarningPercent") ?? 90;
@@ -73,6 +79,19 @@ export class KeysTreeProvider implements vscode.TreeDataProvider<KeyNode> {
     item.contextValue = "heldKey";
     return item;
   }
+}
+
+function limitedTooltip(alias: string, masked: string, models: string[], active: string[]): string {
+  const lines = [
+    `**${escape(alias)}** \`${masked}\``,
+    "",
+    "This key works, but your proxy limits it to model calls, so it can't report its own spend or budget. " +
+      "To see them, use **Key Clarity: Set Account Key** with a key that has key-management access.",
+    "",
+    `Models: ${models.length ? models.map(escape).join(", ") : "none listed"}`,
+  ];
+  if (active.length) lines.push("", `In use for: ${active.join(", ")}`);
+  return lines.join("\n");
 }
 
 function escape(s: string): string {

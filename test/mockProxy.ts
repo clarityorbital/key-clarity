@@ -14,6 +14,8 @@ interface Row {
   expires: string | null;
   models: string[];
   user_id: string;
+  /** `["llm_api_routes"]` limits the key to model calls, as many proxies configure. */
+  allowed_routes: string[];
 }
 
 export interface MockProxy {
@@ -45,6 +47,7 @@ export async function startMockProxy(): Promise<MockProxy> {
       expires: null,
       models: [],
       user_id: userId,
+      allowed_routes: [],
       ...extra,
     });
     return secret;
@@ -75,9 +78,17 @@ export async function startMockProxy(): Promise<MockProxy> {
     const caller = auth ? rows.get(sha(auth)) : undefined;
     if (!caller) return send(401, { error: { message: "Authentication Error, Invalid proxy server token passed.", code: "401" } });
 
+    if (caller.allowed_routes.includes("llm_api_routes") && url.pathname.startsWith("/key/")) {
+      return send(403, {
+        error: { message: "Virtual key is not allowed to call this route. Only allowed to call routes: ['llm_api_routes']", code: "403" },
+      });
+    }
     if (req.method === "GET" && url.pathname === "/key/info") {
-      const { token, ...info } = caller;
-      return send(200, { key: auth, info: { ...info, status: "active" } });
+      const wanted = url.searchParams.get("key");
+      const row = wanted ? rows.get(wanted.startsWith("sk-") ? sha(wanted) : wanted) : caller;
+      if (!row || row.user_id !== caller.user_id) return send(404, { detail: { error: "Key not found" } });
+      const { token, ...info } = row;
+      return send(200, { key: wanted ?? auth, info: { ...info, status: "active" } });
     }
     if (req.method === "GET" && url.pathname === "/key/list") {
       const userId = url.searchParams.get("user_id");

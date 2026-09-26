@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { describeError, type Controller } from "../controller";
 import { budgetText } from "../format";
 import type { HeldKey } from "../keys/keyStore";
-import { LiteLLMClient, normalizeBaseUrl, ProxyError } from "../proxy/client";
+import { isForbidden, LiteLLMClient, normalizeBaseUrl, ProxyError } from "../proxy/client";
 import { claudeUserSettingsPath, claudeWorkspaceSettingsPath } from "../targets/claude";
 import type { KeyNode } from "./keysTree";
 
@@ -260,15 +260,20 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
     if (!secret) return;
     let suggested = "";
     try {
-      const info = await client.keyInfo(secret);
-      suggested = info.alias ?? "";
+      suggested = (await client.keyInfo(secret)).alias ?? "";
     } catch (err) {
-      if (err instanceof ProxyError && (err.status === 401 || err.status === 403)) {
-        void vscode.window.showErrorMessage(`The proxy rejected this key: ${err.message}`);
-        return;
+      try {
+        // Keys limited to model calls can't read /key/info; listing models proves the key works.
+        if (!isForbidden(err)) throw err;
+        await client.listModels(secret);
+      } catch (checkErr) {
+        if (checkErr instanceof ProxyError && (checkErr.status === 401 || checkErr.status === 403)) {
+          void vscode.window.showErrorMessage(`The proxy rejected this key: ${checkErr.message}`);
+          return;
+        }
+        const go = await vscode.window.showWarningMessage(`Couldn't check the key: ${describeError(checkErr)}`, "Add Anyway", "Cancel");
+        if (go !== "Add Anyway") return;
       }
-      const go = await vscode.window.showWarningMessage(`Couldn't check the key: ${describeError(err)}`, "Add Anyway", "Cancel");
-      if (go !== "Add Anyway") return;
     }
     const alias = await vscode.window.showInputBox({
       prompt: "Name for this key",

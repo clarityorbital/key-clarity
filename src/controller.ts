@@ -3,7 +3,8 @@ import { rm } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { KeyStore, type HeldKey } from "./keys/keyStore";
-import { LiteLLMClient, ProxyError, type KeyInfo, type RemoteKey } from "./proxy/client";
+import { LiteLLMClient, ProxyError, type RemoteKey } from "./proxy/client";
+import { fetchKeyStatus, type KeyStatus } from "./proxy/keyStatus";
 import {
   applyClaudeActivation,
   claudeUserSettingsPath,
@@ -22,10 +23,7 @@ import { claudeKeyFile, codexKeyFile, removeKeyFile, workspaceKeyFile, writeKeyF
 
 export type Target = "claude" | "codex";
 
-export interface KeyStatus {
-  info?: KeyInfo;
-  error?: string;
-}
+export type { KeyStatus };
 
 export interface ClaudeConflicts {
   /** Outranking variables in the settings file's env block; Key Clarity can remove these. */
@@ -110,15 +108,8 @@ export class Controller implements vscode.Disposable {
     }
     const client = this.client();
     const keys = await this.store.list();
-    await Promise.all(
-      keys.map(async (k) => {
-        try {
-          this.status.set(k.hash, { info: await client.keyInfo(k.secret) });
-        } catch (err) {
-          this.status.set(k.hash, { error: err instanceof Error ? err.message : String(err) });
-        }
-      }),
-    );
+    const account = await this.accountKey();
+    await Promise.all(keys.map(async (k) => this.status.set(k.hash, await fetchKeyStatus(client, k.secret, account))));
     for (const hash of [...this.status.keys()]) {
       if (!keys.some((k) => k.hash === hash)) this.status.delete(hash);
     }
@@ -402,7 +393,7 @@ export class Controller implements vscode.Disposable {
 
 export function describeError(err: unknown): string {
   if (err instanceof ProxyError && err.status === 403) {
-    return `${err.message}. Your proxy may not allow this key to do that; ask an admin, or set a different account key.`;
+    return `${err.message}. Keys limited to model calls can't list or create keys. Use Key Clarity: Set Account Key with a key that has key-management access, or create keys in the LiteLLM UI and add them here.`;
   }
   return err instanceof Error ? err.message : String(err);
 }

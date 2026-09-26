@@ -33,6 +33,11 @@ export interface GeneratedKey {
   expires: string | null;
 }
 
+/** True when the proxy refused the route for this key, as it does for keys limited to model calls. */
+export function isForbidden(err: unknown): boolean {
+  return err instanceof ProxyError && err.status === 403;
+}
+
 export class ProxyError extends Error {
   constructor(
     message: string,
@@ -74,9 +79,14 @@ export class LiteLLMClient {
     await this.request("GET", "/health/liveliness", undefined);
   }
 
-  /** Info for the key used as the bearer token. Works for any valid key, admin or not. */
-  async keyInfo(key: string): Promise<KeyInfo> {
-    const body = await this.request("GET", "/key/info", key);
+  /**
+   * Info for a key. With only `authKey`, looks up that key itself, which fails with 403 when
+   * the proxy limits the key to model calls. With `keyHash`, looks up another key, which
+   * needs a key with key-management access.
+   */
+  async keyInfo(authKey: string, keyHash?: string): Promise<KeyInfo> {
+    const path = keyHash ? `/key/info?key=${encodeURIComponent(keyHash)}` : "/key/info";
+    const body = await this.request("GET", path, authKey);
     return parseKeyInfo(asRecord(asRecord(body).info));
   }
 
