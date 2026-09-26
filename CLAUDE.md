@@ -11,7 +11,7 @@ A VS Code extension that switches Claude Code and Codex between LiteLLM virtual 
 
 ## GitHub
 
-- Repo: `clarityorbital/key-clarity`, **private** for now and planned to go public, so write everything as if it were public. Use the gh account **clarityorbital**. Check with `gh auth status`, and run `gh auth switch -u clarityorbital` if another account is active. Never use a personal account here.
+- Repo: `clarityorbital/key-clarity`, **private** for now and planned to go public, so write everything as if it were public. It belongs to the **clarityorbital** GitHub account. Don't switch the global gh account, because other projects on this machine use a different one. Instead, prefix GitHub commands for this repo, git push included: `GH_TOKEN=$(gh auth token -u clarityorbital) git push`. Never use a personal account here.
 - Commit identity is set in the repo's local git config. Don't change it.
 - Nothing is pushed, and no issue or PR is opened, without Lane's explicit OK in the current session.
 
