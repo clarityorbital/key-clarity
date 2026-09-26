@@ -25,8 +25,11 @@ const existing = `{
 describe("helperCommand", () => {
   it("quotes the path and tags the alias", () => {
     expect(helperCommand("/a b/it's.key", "proj x!", "linux")).toBe(`cat '/a b/it'\\''s.key' # key-clarity:proj_x_`);
-    expect(helperCommand("C:\\Users\\u\\.key-clarity\\claude.key", "k", "win32")).toBe(`cat 'C:/Users/u/.key-clarity/claude.key' # key-clarity:k`);
+    expect(helperCommand("C:\\Users\\u\\.key-clarity\\claude.key", "proj x!", "win32")).toBe(
+      `type "C:\\Users\\u\\.key-clarity\\claude.key" & rem key-clarity:proj_x_`,
+    );
     expect(isManagedHelper(helperCommand("/k", "a"))).toBe(true);
+    expect(isManagedHelper(helperCommand("C:\\k", "a", "win32"))).toBe(true);
     expect(isManagedHelper("my-own-script.sh")).toBe(false);
   });
 });

@@ -80,7 +80,9 @@ export function activate(ctx: vscode.ExtensionContext): TestApi | undefined {
     }),
   );
 
-  void controller.syncKeyFiles().catch(() => undefined);
+  // Rewrite managed config if an update changed what Key Clarity writes (for example the
+  // Windows apiKeyHelper command). Unchanged files aren't touched.
+  void controller.reapplyActive().catch(() => controller.syncKeyFiles().catch(() => undefined));
   void controller.updateTerminalEnv();
   refreshQuietly();
 

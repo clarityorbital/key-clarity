@@ -80,7 +80,7 @@ Right-click a key for Rename, Copy Key, Remove from Key Clarity, and Delete on P
 - **Creating keys** needs permission on the proxy. By default LiteLLM only lets admins create keys; an admin can allow other roles with `key_generation_settings`. Adding existing keys always works.
 - **Per-workspace keys are Claude Code only.** Codex doesn't let project config change providers or credentials.
 - **Codex needs the Responses API** (`wire_api = "responses"`) on your proxy, which current LiteLLM versions provide.
-- **Windows** is untested. Claude Code's helper runs `cat` through Git Bash; Codex's runs `cmd /c type`.
+- **Windows:** the helpers use `cmd.exe` (`type "…\claude.key"` for Claude Code, `cmd /c type` for Codex). Tested by hand on one laptop so far; the automated tests run on Linux.
 
 ## Development
 

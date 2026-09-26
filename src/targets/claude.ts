@@ -52,20 +52,23 @@ export function claudeWorkspaceSettingsPath(workspacePath: string): string {
 }
 
 /**
- * The apiKeyHelper command. Claude Code runs it in a POSIX shell (Git Bash on Windows),
- * so `cat` works everywhere. The trailing comment names the key: it makes the active
- * key visible in the file, and changes the setting's value on every switch, which makes
- * Claude Code reload the helper right away.
+ * The apiKeyHelper command. Claude Code runs it through the system shell: `/bin/sh` on
+ * macOS and Linux, `cmd.exe` on Windows. The trailing comment names the key: it makes the
+ * active key visible in the file, and changes the setting's value on every switch, which
+ * makes Claude Code reload the helper right away.
  */
 export function helperCommand(keyFilePath: string, alias: string, platform: NodeJS.Platform = process.platform): string {
-  const p = platform === "win32" ? keyFilePath.replace(/\\/g, "/") : keyFilePath;
-  const quoted = `'${p.replace(/'/g, `'\\''`)}'`;
   const label = alias.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 60) || "key";
+  if (platform === "win32") {
+    // cmd.exe: no `cat`, and `#` isn't a comment. Windows paths can't contain `"`.
+    return `type "${keyFilePath}" & rem ${HELPER_MARKER}:${label}`;
+  }
+  const quoted = `'${keyFilePath.replace(/'/g, `'\\''`)}'`;
   return `cat ${quoted} # ${HELPER_MARKER}:${label}`;
 }
 
 export function isManagedHelper(value: unknown): boolean {
-  return typeof value === "string" && value.includes(`# ${HELPER_MARKER}:`);
+  return typeof value === "string" && (value.includes(`# ${HELPER_MARKER}:`) || value.includes(`rem ${HELPER_MARKER}:`));
 }
 
 /** Paths Key Clarity owns in a Claude settings file. */
