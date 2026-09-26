@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { parse as parseToml } from "smol-toml";
-import { ConfigEditError, type PreviousValues } from "./claude";
+import { assertCmdSafePath, ConfigEditError, type PreviousValues } from "./claude";
 
 // Edits ~/.codex/config.toml as text instead of re-serializing it, so the user's comments
 // and layout survive. Key Clarity owns one provider table (plus its `.auth` sub-table) and
@@ -38,7 +38,10 @@ export function parseCodexConfig(text: string | undefined): Record<string, unkno
 
 /** Codex runs the auth command directly, without a shell, and reads the token from stdout. */
 export function authCommand(keyFilePath: string, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
-  if (platform === "win32") return { command: "cmd", args: ["/d", "/c", "type", keyFilePath] };
+  if (platform === "win32") {
+    assertCmdSafePath(keyFilePath, platform);
+    return { command: "cmd", args: ["/d", "/c", "type", keyFilePath] };
+  }
   return { command: "cat", args: [keyFilePath] };
 }
 

@@ -27,6 +27,11 @@ export function workspaceKeyFile(workspacePath: string): string {
   return path.join(keyDir(), "workspaces", `${name}-${id}.key`);
 }
 
+/** Where the pre-Key Clarity copy of a workspace's settings file is kept, outside the repo. */
+export function workspaceBackupFile(workspacePath: string): string {
+  return workspaceKeyFile(workspacePath).replace(/\.key$/, ".settings.local.json").replace(`${path.sep}workspaces${path.sep}`, `${path.sep}backups${path.sep}`);
+}
+
 export async function writeKeyFile(file: string, secret: string): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   for (const dir of new Set([keyDir(), path.dirname(file)])) {

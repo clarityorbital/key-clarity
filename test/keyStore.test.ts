@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { hashKey, KeyStore, maskKey, type SecretBackend } from "../src/keys/keyStore";
-import { atomicWrite, backupOnce, BACKUP_SUFFIX } from "../src/targets/fsUtil";
+import { assertNoSymlinks, atomicWrite, backupOnce, BACKUP_SUFFIX } from "../src/targets/fsUtil";
 import { workspaceKeyFile, writeKeyFile } from "../src/targets/keyFiles";
 
 function memoryBackend(): SecretBackend & { data: Map<string, string> } {
@@ -55,6 +55,19 @@ describe("files", () => {
       expect((await stat(path.dirname(file))).mode & 0o777).toBe(0o700);
     }
     delete process.env.KEY_CLARITY_HOME;
+  });
+
+  it("writes through a symlinked config instead of replacing the link", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "kc-"));
+    const real = path.join(dir, "dotfiles-settings.json");
+    const link = path.join(dir, "settings.json");
+    await writeFile(real, "old");
+    await symlink(real, link);
+    await atomicWrite(link, "new");
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await readFile(real, "utf8")).toBe("new");
+    await expect(assertNoSymlinks([path.join(dir, "missing"), real])).resolves.toBeUndefined();
+    await expect(assertNoSymlinks([link])).rejects.toThrow(/symbolic link/);
   });
 
   it("backs up once and keeps file modes on rewrite", async () => {

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { chmod, realpath, rm } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { KeyStore, type HeldKey } from "./keys/keyStore";
@@ -17,9 +17,9 @@ import {
   restoreClaude,
   type PreviousValues,
 } from "./targets/claude";
-import { applyCodexActivation, codexConfigPath, currentModel, findProfileOverride, restoreCodex } from "./targets/codex";
-import { atomicWrite, backupOnce, readIfExists } from "./targets/fsUtil";
-import { claudeKeyFile, codexKeyFile, removeKeyFile, workspaceKeyFile, writeKeyFile } from "./targets/keyFiles";
+import { applyCodexActivation, codexConfigPath, currentModel, findProfileOverride, removeProviderTables, restoreCodex } from "./targets/codex";
+import { assertNoSymlinks, atomicWrite, backupOnce, readIfExists } from "./targets/fsUtil";
+import { claudeKeyFile, codexKeyFile, removeKeyFile, workspaceBackupFile, workspaceKeyFile, writeKeyFile } from "./targets/keyFiles";
 
 export type Target = "claude" | "codex";
 
@@ -41,7 +41,12 @@ interface Managed {
   previous: PreviousValues;
   /** Key Clarity created the settings file, so it is deleted again if nothing else ends up in it. */
   createdFile?: boolean;
+  /** Codex only: the provider id written, so a later change to the setting can't orphan or clobber tables. */
+  providerId?: string;
 }
+
+/** Secret-storage key holding credential values removed from a settings file, for restoring later. */
+const removedEnvKey = (file: string) => `keyClarity.removedEnv:${file}`;
 
 const CLAUDE_EXTENSION_ID = "anthropic.claude-code";
 
@@ -179,7 +184,9 @@ export class Controller implements vscode.Disposable {
     const key = await this.requireKey(hash);
     const file = claudeWorkspaceSettingsPath(folder);
     const keyFile = workspaceKeyFile(folder);
-    const managed = await this.writeClaudeSettings(file, keyFile, key, opts.removeConflicts, this.managedWorkspace(folder));
+    // The repo controls these paths: never follow a link it planted to some other file.
+    await assertNoSymlinks([path.dirname(file), file]);
+    const managed = await this.writeClaudeSettings(file, keyFile, key, opts.removeConflicts, this.managedWorkspace(folder), workspaceBackupFile(folder));
     await writeKeyFile(keyFile, key.secret);
     await this.ctx.workspaceState.update(STATE.workspacePrefix + folder, { hash, ...managed } satisfies Managed);
     this.fireChanged();
@@ -191,6 +198,7 @@ export class Controller implements vscode.Disposable {
     key: HeldKey,
     removeConflicts: boolean,
     earlier: Managed | undefined,
+    backupPath?: string,
   ): Promise<Omit<Managed, "hash">> {
     const before = await readIfExists(file);
     let text = before ?? "";
@@ -198,13 +206,17 @@ export class Controller implements vscode.Disposable {
     if (removeConflicts && before) {
       const names = findClaudeConflicts(before);
       const env = (parseSettings(before).env ?? {}) as Record<string, unknown>;
-      removed = Object.fromEntries(names.map((n) => [`env.${n}`, { existed: true, value: env[n] }]));
+      // The removed values are credentials: keep them in secret storage, not in plain extension state.
+      const stash = await this.readRemovedEnv(file);
+      for (const n of names) if (!(`env.${n}` in stash)) stash[`env.${n}`] = env[n];
+      await this.ctx.secrets.store(removedEnvKey(file), JSON.stringify(stash));
+      removed = Object.fromEntries(names.map((n) => [`env.${n}`, { existed: true, inSecretStorage: true }]));
       text = removeEnvVars(text, names);
     }
     const ttl = vscode.workspace.getConfiguration("keyClarity").get<number>("claude.helperTtlMs") ?? 60000;
     const result = applyClaudeActivation(text, { baseUrl: this.client().baseUrl, keyFilePath: keyFile, alias: key.alias, helperTtlMs: ttl });
     if (result.text !== before) {
-      await backupOnce(file);
+      await this.backup(file, backupPath);
       await atomicWrite(file, result.text);
     }
     return {
@@ -213,11 +225,30 @@ export class Controller implements vscode.Disposable {
     };
   }
 
+  private async readRemovedEnv(file: string): Promise<Record<string, unknown>> {
+    try {
+      return JSON.parse((await this.ctx.secrets.get(removedEnvKey(file))) ?? "{}") as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  /** Backs a file up once, with owner-only permissions when the backup lives outside the file's folder. */
+  private async backup(file: string, backupPath?: string): Promise<void> {
+    const made = await backupOnce(file, backupPath);
+    if (made && backupPath) await chmod(made, 0o600).catch(() => undefined);
+  }
+
   /** Undoes Key Clarity's edits to a Claude settings file, deleting it if Key Clarity created it and it is now empty. */
   private async restoreClaudeFile(file: string, managed: Managed): Promise<void> {
     const text = await readIfExists(file);
+    const stash = await this.readRemovedEnv(file);
+    await this.ctx.secrets.delete(removedEnvKey(file));
     if (text === undefined) return;
-    const restored = restoreClaude(text, managed.previous);
+    const previous: PreviousValues = Object.fromEntries(
+      Object.entries(managed.previous).map(([k, v]) => [k, v.inSecretStorage ? { existed: k in stash, value: stash[k] } : v]),
+    );
+    const restored = restoreClaude(text, previous);
     if (managed.createdFile && Object.keys(parseSettings(restored)).length === 0) {
       await rm(file, { force: true });
     } else {
@@ -239,7 +270,9 @@ export class Controller implements vscode.Disposable {
   async deactivateClaudeWorkspace(folder: string): Promise<boolean> {
     const managed = this.managedWorkspace(folder);
     if (!managed) return false;
-    await this.restoreClaudeFile(claudeWorkspaceSettingsPath(folder), managed);
+    const file = claudeWorkspaceSettingsPath(folder);
+    await assertNoSymlinks([path.dirname(file), file]);
+    await this.restoreClaudeFile(file, managed);
     await removeKeyFile(workspaceKeyFile(folder));
     await this.ctx.workspaceState.update(STATE.workspacePrefix + folder, undefined);
     this.fireChanged();
@@ -280,10 +313,16 @@ export class Controller implements vscode.Disposable {
 
   /** Adds the workspace settings file to `.git/info/exclude`, which is never committed. */
   async excludeWorkspaceSettings(folder: string): Promise<void> {
-    const gitDir = await new Promise<string>((resolve, reject) =>
-      execFile("git", ["-C", folder, "rev-parse", "--git-dir"], (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))),
+    const rel = await new Promise<string>((resolve, reject) =>
+      execFile("git", ["-C", folder, "rev-parse", "--git-path", "info/exclude"], (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))),
     );
-    const exclude = path.resolve(folder, gitDir, "info", "exclude");
+    // A repo can point .git elsewhere with a `gitdir:` file; only write inside this folder.
+    const root = await realpath(folder);
+    const exclude = path.resolve(root, rel);
+    if (!exclude.startsWith(root + path.sep)) {
+      throw new Error("This repo's git folder is outside the workspace. Add .claude/settings.local.json to .gitignore instead.");
+    }
+    await assertNoSymlinks([path.dirname(exclude), exclude]);
     const text = (await readIfExists(exclude)) ?? "";
     const line = ".claude/settings.local.json";
     if (!text.split(/\r?\n/).includes(line)) {
@@ -310,8 +349,11 @@ export class Controller implements vscode.Disposable {
     const file = codexConfigPath();
     const keyFile = codexKeyFile();
     const before = await readIfExists(file);
-    const result = applyCodexActivation(before, {
-      providerId: this.providerId(),
+    const providerId = this.providerId();
+    const earlierId = this.managed("codex")?.providerId;
+    const source = before !== undefined && earlierId && earlierId !== providerId ? removeProviderTables(before, earlierId) : before;
+    const result = applyCodexActivation(source, {
+      providerId,
       baseUrl: this.client().baseUrl,
       keyFilePath: keyFile,
       alias: key.alias,
@@ -319,11 +361,11 @@ export class Controller implements vscode.Disposable {
     });
     await writeKeyFile(keyFile, key.secret);
     if (result.text !== before) {
-      await backupOnce(file);
+      await this.backup(file);
       await atomicWrite(file, result.text);
     }
     const previous = mergePrevious(this.managed("codex")?.previous, result.previous);
-    await this.ctx.globalState.update(STATE.codex, { hash, previous } satisfies Managed);
+    await this.ctx.globalState.update(STATE.codex, { hash, previous, providerId } satisfies Managed);
     await this.updateTerminalEnv();
     this.fireChanged();
   }
@@ -333,7 +375,7 @@ export class Controller implements vscode.Disposable {
     if (!managed) return false;
     const file = codexConfigPath();
     const text = await readIfExists(file);
-    if (text !== undefined) await atomicWrite(file, restoreCodex(text, managed.previous, this.providerId()));
+    if (text !== undefined) await atomicWrite(file, restoreCodex(text, managed.previous, managed.providerId ?? this.providerId()));
     await removeKeyFile(codexKeyFile());
     await this.ctx.globalState.update(STATE.codex, undefined);
     await this.updateTerminalEnv();

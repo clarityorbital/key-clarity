@@ -69,6 +69,10 @@ describe("applyCodexActivation", () => {
     expect(() => applyCodexActivation(`model = "unterminated\n`, activation)).toThrow(/isn't valid TOML/);
   });
 
+  it("refuses Windows key paths cmd.exe would reinterpret", () => {
+    expect(() => authCommand("C:\\Users\\R&D\\codex.key", "win32")).toThrow(/KEY_CLARITY_HOME/);
+  });
+
   it("uses cmd /c type on Windows", () => {
     expect(authCommand("C:\\k\\codex.key", "win32")).toEqual({ command: "cmd", args: ["/d", "/c", "type", "C:\\k\\codex.key"] });
     const { text } = applyCodexActivation(undefined, { ...activation, keyFilePath: "C:\\k\\codex.key", platform: "win32" });

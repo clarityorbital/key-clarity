@@ -1,0 +1,31 @@
+# Changelog
+
+## 0.2.0
+
+Security hardening, and preparation for the VS Code Marketplace.
+
+- Key Clarity's settings (`proxyUrl`, `codex.providerId`, `claude.helperTtlMs`, `terminal.exportVariables`) can now only be set in user or remote-machine settings. Before, a cloned repo's `.vscode/settings.json` could point Key Clarity at another server and send it your keys.
+- Key Clarity only runs in trusted workspaces.
+- Credentials removed from `settings.json` are kept in VS Code's secret storage, not plain extension state.
+- Key Clarity refuses to edit a workspace's `.claude/settings.local.json` through a symbolic link. Backups of that file are kept in `~/.key-clarity/backups`, not in the repo.
+- Symlinked user config (for example from a dotfiles manager) is updated in place instead of being replaced.
+- Proxy requests never follow redirects. Key Clarity warns before using plain `http` to a non-local proxy. Proxy error text is sanitized before it's shown.
+- On Windows, key folder paths containing characters `cmd.exe` would reinterpret are refused.
+- If `codex.providerId` changes, the old provider table is cleaned up.
+- New icon, MIT license, and Marketplace listing details.
+
+## 0.1.2
+
+- Fix Claude Code on Windows. Claude Code runs `apiKeyHelper` through `cmd.exe`, where the helper failed with "'cat' is not recognized". The Windows helper now uses `type`.
+- Key Clarity re-applies its Claude Code and Codex settings when VS Code starts, so fixes like this take effect without switching keys again.
+
+## 0.1.1
+
+- Support keys that the proxy limits to model calls (`llm_api_routes`). These keys used to be rejected when added. Now they show as working, with "spend not shown". Set an account key with key-management access to see their spend.
+
+## 0.1.0
+
+- First release: a sidebar of LiteLLM virtual keys with spend, budget and expiry.
+- Add existing keys, or generate new ones.
+- One-click switching for Claude Code (globally or per workspace) and Codex.
+- Status bar badge, budget and expiry warnings, and a clean undo of every config change.

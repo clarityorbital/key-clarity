@@ -100,7 +100,7 @@ function escape(s: string): string {
 
 function detailsTable(masked: string, info: KeyInfo, active: string[]): string {
   const rows: Array<[string, string]> = [
-    ["Key", `\`${masked}\``],
+    ["Key", `\`${masked.replace(/`/g, "")}\``],
     ["Spend", info.maxBudget !== null ? `${money(info.spend)} of ${money(info.maxBudget)}` : money(info.spend)],
   ];
   if (info.budgetResetAt) rows.push(["Budget resets", new Date(info.budgetResetAt).toLocaleString()]);

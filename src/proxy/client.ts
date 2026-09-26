@@ -52,15 +52,31 @@ type FetchFn = typeof fetch;
 
 /** Strips trailing slashes and a trailing `/v1` so callers can paste either form. */
 export function normalizeBaseUrl(raw: string): string {
-  let url = raw.trim().replace(/\/+$/, "");
-  if (url.toLowerCase().endsWith("/v1")) {
-    url = url.slice(0, -3).replace(/\/+$/, "");
-  }
-  const parsed = new URL(url);
+  const parsed = new URL(raw.trim());
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error(`Unsupported protocol "${parsed.protocol}". Use http or https.`);
   }
-  return url;
+  if (parsed.username || parsed.password) throw new Error("Remove the user name and password from the URL.");
+  // Keep only origin and path: no query, fragment or credentials, no trailing slash or /v1.
+  let pathname = parsed.pathname.replace(/\/+$/, "");
+  if (pathname.toLowerCase().endsWith("/v1")) pathname = pathname.slice(0, -3).replace(/\/+$/, "");
+  return parsed.origin + pathname;
+}
+
+/** True for plain-http URLs to anything but this machine, where keys would travel unencrypted. */
+export function isInsecureRemote(url: string): boolean {
+  const { protocol, hostname } = new URL(url);
+  const loopback = hostname === "localhost" || hostname === "[::1]" || /^127\./.test(hostname);
+  return protocol === "http:" && !loopback;
+}
+
+/**
+ * Makes proxy-supplied text safe to show in notifications, which render Markdown-style
+ * `[text](command:…)` links: brackets become parentheses, whitespace collapses, length is capped.
+ */
+export function displaySafe(text: string, max = 200): string {
+  const clean = text.replace(/\[/g, "(").replace(/\]/g, ")").replace(/\s+/g, " ").trim();
+  return clean.length > max ? clean.slice(0, max - 1) + "…" : clean;
 }
 
 export class LiteLLMClient {
@@ -159,6 +175,8 @@ export class LiteLLMClient {
         method,
         headers,
         body: json === undefined ? undefined : JSON.stringify(json),
+        // Never follow redirects: they could carry the Authorization header somewhere else.
+        redirect: "error",
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
@@ -174,7 +192,7 @@ export class LiteLLMClient {
       // Non-JSON bodies (such as the liveness text) are returned as-is.
     }
     if (!res.ok) {
-      throw new ProxyError(`${method} ${path.split("?")[0]} failed (${res.status}): ${errorMessage(body)}`, res.status);
+      throw new ProxyError(`${method} ${path.split("?")[0]} failed (${res.status}): ${displaySafe(errorMessage(body))}`, res.status);
     }
     return body;
   }

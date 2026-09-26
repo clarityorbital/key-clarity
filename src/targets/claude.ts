@@ -30,7 +30,7 @@ export interface ClaudeActivation {
  * What each managed path held before Key Clarity first wrote it, keyed by dotted path.
  * Stored as `{ existed, value }` because it is persisted as JSON, which drops `undefined`.
  */
-export type PreviousValues = Record<string, { existed: boolean; value?: unknown }>;
+export type PreviousValues = Record<string, { existed: boolean; value?: unknown; inSecretStorage?: boolean }>;
 
 /** Pseudo-path recording whether the file had an `env` block before Key Clarity. */
 const ENV_BLOCK = "env";
@@ -57,9 +57,21 @@ export function claudeWorkspaceSettingsPath(workspacePath: string): string {
  * active key visible in the file, and changes the setting's value on every switch, which
  * makes Claude Code reload the helper right away.
  */
+/** cmd.exe expands or interprets these even in arguments, so key-file paths must not contain them. */
+const CMD_UNSAFE = /[%^&|<>!"]/;
+
+export function assertCmdSafePath(p: string, platform: NodeJS.Platform = process.platform): void {
+  if (platform === "win32" && CMD_UNSAFE.test(p)) {
+    throw new ConfigEditError(
+      `The key folder path "${p}" contains a character cmd.exe treats specially (% ^ & | < > ! "). Set the KEY_CLARITY_HOME environment variable to a plain folder such as C:\\key-clarity and restart VS Code.`,
+    );
+  }
+}
+
 export function helperCommand(keyFilePath: string, alias: string, platform: NodeJS.Platform = process.platform): string {
   const label = alias.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 60) || "key";
   if (platform === "win32") {
+    assertCmdSafePath(keyFilePath, platform);
     // cmd.exe: no `cat`, and `#` isn't a comment. Windows paths can't contain `"`.
     return `type "${keyFilePath}" & rem ${HELPER_MARKER}:${label}`;
   }

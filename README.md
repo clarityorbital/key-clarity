@@ -75,6 +75,17 @@ Right-click a key for Rename, Copy Key, Remove from Key Clarity, and Delete on P
 | `keyClarity.codex.providerId` | `key-clarity` | Codex provider id |
 | `keyClarity.terminal.exportVariables` | `false` | Also set `LITELLM_PROXY_*` and `OPENAI_*` in new terminals |
 
+## Security
+
+- Key Clarity's settings can only be set in your user (or remote machine) settings, never by a workspace. A cloned repo can't redirect your keys to another proxy.
+- It only runs in trusted workspaces.
+- It never follows redirects from the proxy, and it warns before using plain `http` to a non-local proxy.
+- Credentials it removes from `settings.json` are kept in VS Code's secret storage until they are restored.
+
+## Uninstalling
+
+Run **Stop Managing Claude Code** and **Stop Managing Codex** first. Uninstalling VS Code extensions can't run cleanup, so otherwise Claude Code and Codex keep reading keys from `~/.key-clarity`. Afterwards you can delete `~/.key-clarity`.
+
 ## Limitations
 
 - **Creating keys** needs permission on the proxy. By default LiteLLM only lets admins create keys; an admin can allow other roles with `key_generation_settings`. Adding existing keys always works.
@@ -94,3 +105,7 @@ code --install-extension dist/key-clarity.vsix
 ```
 
 Background research: [docs/report.md](docs/report.md).
+
+## License
+
+[MIT](LICENSE) © Clarity Orbital Inc.

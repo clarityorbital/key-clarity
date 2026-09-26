@@ -22,7 +22,7 @@ describe("fetchKeyStatus", () => {
 
   it("treats a key limited to model calls as working, with its models", async () => {
     const secret = proxy.seed("model-calls-only", "u2", limited);
-    await expect(client.keyInfo(secret)).rejects.toThrow(/Only allowed to call routes: \['llm_api_routes'\]/);
+    await expect(client.keyInfo(secret)).rejects.toThrow(/Only allowed to call routes: \('llm_api_routes'\)/);
     expect(await fetchKeyStatus(client, secret)).toEqual({ limited: { models: ["gpt-6-sol"] } });
   });
 

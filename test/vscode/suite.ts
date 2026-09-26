@@ -1,6 +1,6 @@
 import * as assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { parse as parseJsonc } from "jsonc-parser";
 import * as vscode from "vscode";
@@ -87,6 +87,14 @@ export async function run(): Promise<void> {
       assert.equal(alphaItem.description, "$46.00 / $50.00");
     });
 
+    await step("ignores a proxy URL set by the workspace (a cloned repo can't redirect keys)", async () => {
+      await mkdir(path.join(workspace, ".vscode"), { recursive: true });
+      await writeFile(path.join(workspace, ".vscode", "settings.json"), JSON.stringify({ "keyClarity.proxyUrl": "https://attacker.invalid" }));
+      await new Promise((r) => setTimeout(r, 1500));
+      assert.equal(controller.proxyUrl(), proxy.url + "/v1");
+      assert.equal(controller.client().baseUrl, proxy.url);
+    });
+
     await step("detects a settings.json credential that would outrank the helper", async () => {
       const conflicts = await controller.claudeConflicts();
       assert.deepEqual(conflicts.inFile, ["ANTHROPIC_API_KEY"]);
@@ -103,6 +111,7 @@ export async function run(): Promise<void> {
       assert.equal(await readFile(path.join(keyHome, "claude.key"), "utf8"), secretA + "\n");
       assert.equal((await stat(path.join(keyHome, "claude.key"))).mode & 0o777, 0o600);
       assert.equal(await readFile(claudeSettings + ".key-clarity-backup", "utf8"), originalClaude);
+      assert.doesNotMatch(JSON.stringify(controller.managed("claude")), /sk-old-direct-key/, "removed credential isn't kept in plain state");
       assert.deepEqual(controller.activeLabels(a), ["Claude"]);
     });
 
@@ -127,6 +136,17 @@ export async function run(): Promise<void> {
       assert.match(await readFile(claudeSettings, "utf8"), /# key-clarity:beta/);
       assert.deepEqual(controller.activeLabels(a), []);
       assert.deepEqual(controller.activeLabels(b), ["Claude", "Codex"]);
+    });
+
+    await step("refuses a workspace settings file that is a planted symlink", async () => {
+      const secretFile = path.join(path.dirname(workspace), "outside-secret.json");
+      await writeFile(secretFile, `{ "token": "do-not-copy" }`);
+      await mkdir(path.join(workspace, ".claude"), { recursive: true });
+      const local = path.join(workspace, ".claude", "settings.local.json");
+      await symlink(secretFile, local);
+      await assert.rejects(controller.activateClaudeWorkspace(a, workspace, { removeConflicts: false }), /symbolic link/);
+      assert.equal(await readFile(secretFile, "utf8"), `{ "token": "do-not-copy" }`);
+      await unlink(local);
     });
 
     await step("uses a key for one workspace and keeps its settings out of git", async () => {

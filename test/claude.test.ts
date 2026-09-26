@@ -32,6 +32,12 @@ describe("helperCommand", () => {
     expect(isManagedHelper(helperCommand("C:\\k", "a", "win32"))).toBe(true);
     expect(isManagedHelper("my-own-script.sh")).toBe(false);
   });
+
+  it("refuses Windows paths cmd.exe would reinterpret", () => {
+    expect(() => helperCommand("C:\\Users\\a%PATH%b\\.key-clarity\\claude.key", "k", "win32")).toThrow(/KEY_CLARITY_HOME/);
+    expect(() => helperCommand("C:\\Users\\R&D\\claude.key", "k", "win32")).toThrow(/KEY_CLARITY_HOME/);
+    expect(helperCommand("/home/R&D/claude.key", "k", "linux")).toBe(`cat '/home/R&D/claude.key' # key-clarity:k`);
+  });
 });
 
 describe("applyClaudeActivation", () => {

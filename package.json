@@ -1,30 +1,54 @@
 {
   "name": "key-clarity",
   "displayName": "Key Clarity",
-  "description": "Switch Claude Code and Codex between your LiteLLM virtual keys in one click, with spend and budget at a glance.",
-  "version": "0.1.2",
+  "description": "Switch Claude Code and Codex between your LiteLLM virtual keys in one click, with spend, budget and expiry at a glance.",
+  "version": "0.2.0",
   "publisher": "clarityorbital",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0B1A45",
+    "theme": "dark"
+  },
   "private": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/clarityorbital/key-clarity"
   },
+  "homepage": "https://github.com/clarityorbital/key-clarity#readme",
+  "bugs": {
+    "url": "https://github.com/clarityorbital/key-clarity/issues"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
+    "AI",
     "Other"
   ],
   "keywords": [
     "litellm",
     "claude code",
     "codex",
-    "api key"
+    "api key",
+    "virtual key",
+    "llm gateway",
+    "llm proxy",
+    "anthropic",
+    "openai",
+    "key management"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Key Clarity edits Claude Code and Codex settings and runs git in the workspace, so it only runs in trusted workspaces."
+    },
+    "virtualWorkspaces": false
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -286,6 +310,7 @@
       "title": "Key Clarity",
       "properties": {
         "keyClarity.proxyUrl": {
+          "scope": "machine",
           "type": "string",
           "default": "",
           "markdownDescription": "Base URL of your LiteLLM proxy, for example `https://litellm.example.com`. Set it with **Key Clarity: Set Up Proxy**."
@@ -310,17 +335,20 @@
           "description": "Warn when a key expires within this many days."
         },
         "keyClarity.claude.helperTtlMs": {
+          "scope": "machine",
           "type": "number",
           "default": 60000,
           "minimum": 0,
           "markdownDescription": "How often Claude Code re-reads the active key (written as `CLAUDE_CODE_API_KEY_HELPER_TTL_MS`). Set to 0 to leave Claude Code's default of five minutes."
         },
         "keyClarity.codex.providerId": {
+          "scope": "machine",
           "type": "string",
           "default": "key-clarity",
           "markdownDescription": "Provider id written to `~/.codex/config.toml` under `[model_providers.<id>]`."
         },
         "keyClarity.terminal.exportVariables": {
+          "scope": "machine",
           "type": "boolean",
           "default": false,
           "markdownDescription": "Also set `LITELLM_PROXY_URL`, `LITELLM_PROXY_API_KEY`, `OPENAI_BASE_URL` and `OPENAI_API_KEY` in new integrated terminals, using the key active for Codex. Off by default because it places the key in terminal environments."
@@ -335,7 +363,7 @@
     "test": "vitest run",
     "test:e2e": "vitest run -c vitest.e2e.config.mts",
     "test:vscode": "npm run build && node test/vscode/runTest.mjs",
-    "package": "npm run typecheck && npm run build -- --production && vsce package --skip-license --out dist/key-clarity.vsix"
+    "package": "npm run typecheck && npm run build -- --production && vsce package --out dist/key-clarity.vsix"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

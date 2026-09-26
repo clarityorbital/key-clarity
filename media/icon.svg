@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Key Clarity icon: a key whose bow is the Clarity Orbital "C" ring, circled by its orbit. -->
+  <defs>
+    <!-- The half of the orbit below its major axis passes in front of the ring, as in the logo. -->
+    <clipPath id="front">
+      <polygon points="-182,240.5 374,15.5 374,400 -182,400"/>
+    </clipPath>
+  </defs>
+  <rect width="256" height="256" rx="44" fill="#FFFFFF"/>
+  <ellipse cx="96" cy="128" rx="78" ry="24" transform="rotate(-22 96 128)" fill="none" stroke="#5598E7" stroke-width="6"/>
+  <path d="M 131.2 97.5 A 48 48 0 1 0 131.2 158.5" fill="none" stroke="#0B1A45" stroke-width="14" stroke-linecap="round"/>
+  <g clip-path="url(#front)">
+    <ellipse cx="96" cy="128" rx="78" ry="24" transform="rotate(-22 96 128)" fill="none" stroke="#FFFFFF" stroke-width="12"/>
+    <ellipse cx="96" cy="128" rx="78" ry="24" transform="rotate(-22 96 128)" fill="none" stroke="#5598E7" stroke-width="6"/>
+  </g>
+  <!-- The shaft stays on top, so the orbit only passes in front of the ring. -->
+  <path d="M 118 128 H 226 M 200 128 V 152 M 222 128 V 146" fill="none" stroke="#0B1A45" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="165" cy="86" r="11" fill="#5598E7"/>
+</svg>

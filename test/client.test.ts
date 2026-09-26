@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { LiteLLMClient, normalizeBaseUrl, ProxyError } from "../src/proxy/client";
+import { displaySafe, isInsecureRemote, LiteLLMClient, normalizeBaseUrl, ProxyError } from "../src/proxy/client";
 import { hashKey } from "../src/keys/keyStore";
 import { startMockProxy, type MockProxy } from "./mockProxy";
 
@@ -17,9 +17,29 @@ describe("normalizeBaseUrl", () => {
     expect(normalizeBaseUrl("https://llm.example.com/v1/")).toBe("https://llm.example.com");
     expect(normalizeBaseUrl(" https://llm.example.com/proxy// ")).toBe("https://llm.example.com/proxy");
   });
+  it("keeps only origin and path", () => {
+    expect(normalizeBaseUrl("https://llm.example.com/proxy/v1?x=1#frag")).toBe("https://llm.example.com/proxy");
+    expect(() => normalizeBaseUrl("https://user:pw@llm.example.com")).toThrow(/user name and password/);
+  });
+
+  it("flags plain http to remote hosts only", () => {
+    expect(isInsecureRemote("http://llm.example.com")).toBe(true);
+    expect(isInsecureRemote("https://llm.example.com")).toBe(false);
+    expect(isInsecureRemote("http://localhost:4000")).toBe(false);
+    expect(isInsecureRemote("http://127.0.0.1:4000")).toBe(false);
+  });
+
   it("rejects other protocols", () => {
     expect(() => normalizeBaseUrl("ftp://x.example.com")).toThrow(/Unsupported protocol/);
     expect(() => normalizeBaseUrl("not a url")).toThrow();
+  });
+});
+
+describe("displaySafe", () => {
+  it("neutralizes notification links and caps length", () => {
+    expect(displaySafe("click [here](command:workbench.action.terminal.sendSequence)")).toBe("click (here)(command:workbench.action.terminal.sendSequence)");
+    expect(displaySafe("a\n\n  b")).toBe("a b");
+    expect(displaySafe("x".repeat(500))).toHaveLength(200);
   });
 });
 

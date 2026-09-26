@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { describeError, type Controller } from "../controller";
 import { budgetText } from "../format";
 import type { HeldKey } from "../keys/keyStore";
-import { isForbidden, LiteLLMClient, normalizeBaseUrl, ProxyError } from "../proxy/client";
+import { isForbidden, isInsecureRemote, LiteLLMClient, normalizeBaseUrl, ProxyError } from "../proxy/client";
 import { claudeUserSettingsPath, claudeWorkspaceSettingsPath } from "../targets/claude";
 import type { KeyNode } from "./keysTree";
 
@@ -225,6 +225,14 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
     });
     if (!input) return;
     const url = normalizeBaseUrl(input);
+    if (isInsecureRemote(url)) {
+      const go = await vscode.window.showWarningMessage(
+        `${url} uses plain http, so your keys would travel unencrypted.`,
+        { modal: true, detail: "Use https unless this proxy is only reachable on a network you trust." },
+        "Use It Anyway",
+      );
+      if (go !== "Use It Anyway") return;
+    }
     const reachable = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `Checking ${url}…` },
       () =>
