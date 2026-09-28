@@ -248,7 +248,8 @@ export async function run(): Promise<void> {
       const windowed = proxy.seed("windowed", "user-1", {
         allowed_routes: ["llm_api_routes"],
         spend: 900,
-        budget_limits: JSON.stringify([{ budget_duration: "1mo", max_budget: 200, reset_at: nextMonth }]),
+        // As the LiteLLM UI's Budget Windows creates a Monthly window.
+        budget_limits: JSON.stringify([{ budget_duration: "30d", max_budget: 200, reset_at: nextMonth }]),
       });
       const held = await controller.store.add(windowed, "windowed");
       proxy.dailySpend.push({ date: now.toISOString().slice(0, 10), api_key: held.hash, user_id: "user-1", spend: 42 });

@@ -107,13 +107,13 @@ describe("LiteLLMClient", () => {
 
   it("reads budget windows and a key's spend over a date range", async () => {
     const windows = [
-      { budget_duration: "1mo", max_budget: 200, reset_at: "2026-10-01T00:00:00+00:00" },
-      { budget_duration: "1d", max_budget: 20, reset_at: "2026-09-29T00:00:00+00:00" },
+      { budget_duration: "30d", max_budget: 200, reset_at: "2026-10-01T00:00:00+00:00" },
+      { budget_duration: "24h", max_budget: 20, reset_at: "2026-09-29T00:00:00+00:00" },
     ];
     const secret = proxy.seed("windowed", "user-10", { spend: 900, budget_limits: JSON.stringify(windows) });
     expect((await client.keyInfo(secret)).budgetWindows).toEqual([
-      { maxBudget: 200, budgetDuration: "1mo", resetAt: "2026-10-01T00:00:00+00:00", spend: null },
-      { maxBudget: 20, budgetDuration: "1d", resetAt: "2026-09-29T00:00:00+00:00", spend: null },
+      { maxBudget: 200, budgetDuration: "30d", resetAt: "2026-10-01T00:00:00+00:00", spend: null },
+      { maxBudget: 20, budgetDuration: "24h", resetAt: "2026-09-29T00:00:00+00:00", spend: null },
     ]);
     const hash = hashKey(secret);
     proxy.dailySpend.push(
@@ -123,8 +123,31 @@ describe("LiteLLMClient", () => {
       { date: "2026-09-28", api_key: "another-key", user_id: "user-10", spend: 7 },
     );
     expect(await client.keySpend(secret, hash, "2026-09-01", "2026-09-28")).toBe(42);
+    // The aggregated route is admin-only, so it isn't used.
+    expect(proxy.requests.some((r) => r.path === "/user/daily/activity/aggregated")).toBe(false);
     // Another user's key sees none of it: the proxy scopes spend to the caller's user.
     expect(await client.keySpend(proxy.seed("stranger", "user-11"), hash, "2026-09-01", "2026-09-28")).toBe(0);
+  });
+
+  it("reads budget windows returned as a list, as a 1.93 proxy returns them", async () => {
+    const secret = proxy.seed("listed", "user-13", {
+      spend: 300,
+      budget_limits: [{ reset_at: "2026-10-01T00:00:00+00:00", max_budget: 150.0, budget_duration: "30d" }],
+    });
+    const info = await client.keyInfo(secret);
+    expect(info).toMatchObject({ maxBudget: null, budgetDuration: null });
+    expect(info.budgetWindows).toEqual([{ maxBudget: 150, budgetDuration: "30d", resetAt: "2026-10-01T00:00:00+00:00", spend: null }]);
+  });
+
+  it("adds up a key's spend across pages of daily activity", async () => {
+    const secret = proxy.seed("busy", "user-12");
+    const hash = hashKey(secret);
+    // 2,500 rows: three pages of 1,000, whose totals the proxy reports per page.
+    for (let i = 0; i < 2500; i++) proxy.dailySpend.push({ date: "2026-09-15", api_key: hash, user_id: "user-12", spend: 0.5 });
+    expect(await client.keySpend(secret, hash, "2026-09-01", "2026-09-28")).toBe(1250);
+    await expect(
+      fetch(`${proxy.url}/user/daily/activity/aggregated?start_date=2026-09-01&end_date=2026-09-28`, { headers: { Authorization: `Bearer ${secret}` } }).then((r) => r.status),
+    ).resolves.toBe(403);
   });
 
   it("lists the user's keys with hashes that match sha256 of the secret", async () => {

@@ -19,8 +19,8 @@ interface Row {
   models: string[];
   user_id: string;
   team_id?: string | null;
-  /** Budget windows (LiteLLM 1.93+), as the proxy stores them: JSON text. */
-  budget_limits?: string | null;
+  /** Budget windows (LiteLLM 1.93+): a list, or JSON text of one. */
+  budget_limits?: string | Array<{ budget_duration: string; max_budget: number; reset_at?: string | null }> | null;
   /** `["llm_api_routes"]` limits the key to model calls, as many proxies configure. */
   allowed_routes: string[];
 }
@@ -120,14 +120,23 @@ export async function startMockProxy(): Promise<MockProxy> {
         .map(([team_id, { members, member_budgets, ...t }]) => ({ team_id, ...t }));
       return send(200, { user_id: userId, user_info: users.get(userId) ?? null, keys: [], teams: memberOf });
     }
-    if (req.method === "GET" && url.pathname === "/user/daily/activity/aggregated") {
+    if (url.pathname === "/user/daily/activity/aggregated") {
+      // Admin-only in LiteLLM 1.93: not among the routes internal users may call.
+      return send(403, { error: { message: "Only proxy admin can be used to generate, delete, update info for new keys/users/teams.", code: "403" } });
+    }
+    if (req.method === "GET" && url.pathname === "/user/daily/activity") {
       const [start, end, apiKey] = ["start_date", "end_date", "api_key"].map((p) => url.searchParams.get(p));
       if (!start || !end) return send(400, { detail: { error: "Please provide start_date and end_date" } });
-      // Non-admins only see their own user's spend.
-      const total = dailySpend
-        .filter((r) => r.user_id === caller.user_id && (!apiKey || r.api_key === apiKey) && r.date >= start && r.date <= end)
-        .reduce((sum, r) => sum + r.spend, 0);
-      return send(200, { results: [], metadata: { total_spend: total, total_pages: 1, has_more: false } });
+      const page = Number(url.searchParams.get("page") ?? 1);
+      const pageSize = Number(url.searchParams.get("page_size") ?? 50);
+      // Non-admins only see their own user's spend. Like the proxy, the total covers this page alone.
+      const rows = dailySpend.filter((r) => r.user_id === caller.user_id && (!apiKey || r.api_key === apiKey) && r.date >= start && r.date <= end);
+      const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+      const total_spend = pageRows.reduce((sum, r) => sum + r.spend, 0);
+      return send(200, {
+        results: [],
+        metadata: { total_spend, page, total_pages: Math.ceil(rows.length / pageSize), has_more: page * pageSize < rows.length },
+      });
     }
     if (req.method === "GET" && url.pathname === "/team/info") {
       const teamId = url.searchParams.get("team_id") ?? "";

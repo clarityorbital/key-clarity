@@ -48,14 +48,17 @@ describe("format", () => {
     expect(periodName("7d")).toBe("week");
     expect(periodName("1w")).toBe("week");
     expect(periodName("24h")).toBe("day");
-    expect(periodName("30d")).toBe("30 days");
+    // LiteLLM resets 30d on the 1st of each month, and its UI calls it Monthly.
+    expect(periodName("30d")).toBe("month");
+    expect(periodName("14d")).toBe("14 days");
     expect(periodName("3mo")).toBe("3 months");
     expect(periodName("odd")).toBe("odd");
   });
 
   it("formats periodic budgets", () => {
     expect(budgetText(info({ spend: 12.4, maxBudget: 200, budgetDuration: "1mo" }))).toBe("$12.40 / $200.00 monthly");
-    expect(budgetText(info({ spend: 12.4, maxBudget: 200, budgetDuration: "30d" }))).toBe("$12.40 / $200.00 every 30 days");
+    expect(budgetText(info({ spend: 12.4, maxBudget: 200, budgetDuration: "30d" }))).toBe("$12.40 / $200.00 monthly");
+    expect(budgetText(info({ spend: 12.4, maxBudget: 200, budgetDuration: "14d" }))).toBe("$12.40 / $200.00 every 14 days");
     expect(budgetText(info({ spend: 3, budgetDuration: "1mo" }))).toBe("$3.00 this month");
   });
 
@@ -83,7 +86,7 @@ describe("format", () => {
       ["Budget", "no limit"],
       ["Spent", "$3.00"],
     ]);
-    expect(budgetRows(info({ spend: 3, budgetDuration: "30d" }), now)[0][1]).toBe("no limit, spend resets every 30 days");
+    expect(budgetRows(info({ spend: 3, budgetDuration: "14d" }), now)[0][1]).toBe("no limit, spend resets every 14 days");
   });
 
   it("describes expiry", () => {
@@ -175,14 +178,18 @@ describe("user and team budgets", () => {
 });
 
 describe("budget windows", () => {
-  const monthly = { maxBudget: 200, budgetDuration: "1mo", resetAt: "2026-10-01T00:00:00+00:00", spend: 42 };
-  const daily = { maxBudget: 20, budgetDuration: "1d", resetAt: "2026-09-27T00:00:00+00:00", spend: 19 };
+  // As the LiteLLM UI creates them: Monthly is 30d, Daily is 24h.
+  const monthly = { maxBudget: 200, budgetDuration: "30d", resetAt: "2026-10-01T00:00:00+00:00", spend: 42 };
+  const daily = { maxBudget: 20, budgetDuration: "24h", resetAt: "2026-09-27T00:00:00+00:00", spend: 19 };
 
   it("works out when a window began", () => {
     expect(windowStart(monthly)?.toISOString()).toBe("2026-09-01T00:00:00.000Z");
     expect(windowStart(daily)?.toISOString()).toBe("2026-09-26T00:00:00.000Z");
     expect(windowStart({ budgetDuration: "7d", resetAt: "2026-09-28T00:00:00Z" })?.toISOString()).toBe("2026-09-21T00:00:00.000Z");
     expect(windowStart({ budgetDuration: "1mo", resetAt: null })).toBeUndefined();
+    // The UI's Monthly window is 30d, which resets on the 1st: the window is the calendar month, even in a 31-day month.
+    expect(windowStart({ budgetDuration: "30d", resetAt: "2026-11-01T00:00:00+00:00" })?.toISOString()).toBe("2026-10-01T00:00:00.000Z");
+    expect(windowStart({ budgetDuration: "24h", resetAt: "2026-09-29T00:00:00+00:00" })?.toISOString()).toBe("2026-09-28T00:00:00.000Z");
   });
 
   it("summarizes the window closest to its limit", () => {
@@ -190,6 +197,15 @@ describe("budget windows", () => {
     expect(spendSummary(info({ spend: 900, budgetWindows: [monthly, daily] }), [])).toBe("$19.00 / $20.00 daily");
     expect(spendSummary(info({ spend: 900, budgetWindows: [{ ...monthly, spend: null }] }), [])).toBe("$900.00 spent · $200.00 monthly limit");
     expect(highestPercent(info({ budgetWindows: [monthly, daily] }), [])).toBe(95);
+  });
+
+  it("shows a key with only a monthly window, as the LiteLLM UI creates one", () => {
+    const key = info({ spend: 300, budgetWindows: [{ maxBudget: 150, budgetDuration: "30d", resetAt: "2026-10-01T00:00:00+00:00", spend: 90.123 }] });
+    expect(spendSummary(key, [])).toBe("$90.12 / $150.00 monthly");
+    expect(budgetWindowRows(key.budgetWindows[0], now).slice(0, 2)).toEqual([
+      ["Budget", "$150.00 per month"],
+      ["Spent this month", "$90.12 (60%), $59.88 left"],
+    ]);
   });
 
   it("lists a window's rows, noting unknown spend", () => {

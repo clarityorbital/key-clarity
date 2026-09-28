@@ -147,12 +147,18 @@ export class LiteLLMClient {
   /**
    * A key's spend from `startDate` through `endDate` (UTC dates, `YYYY-MM-DD`), from the proxy's daily
    * spend table. `authKey` must belong to the same user as the key, and may be the key itself.
+   * Uses `/user/daily/activity`, which internal users may call; the `/aggregated` variant is admin-only.
+   * Each page's `metadata.total_spend` covers that page alone, so the pages are added up.
    */
   async keySpend(authKey: string, keyHash: string, startDate: string, endDate: string): Promise<number> {
-    const params = new URLSearchParams({ start_date: startDate, end_date: endDate, api_key: keyHash });
-    const body = asRecord(await this.request("GET", `/user/daily/activity/aggregated?${params}`, authKey));
-    const total = asRecord(body.metadata).total_spend;
-    if (typeof total !== "number") throw new ProxyError("The proxy did not return a spend total.", null);
+    let total = 0;
+    for (let page = 1; page <= 20; page++) {
+      const params = new URLSearchParams({ start_date: startDate, end_date: endDate, api_key: keyHash, page_size: "1000", page: String(page) });
+      const metadata = asRecord(asRecord(await this.request("GET", `/user/daily/activity?${params}`, authKey)).metadata);
+      if (typeof metadata.total_spend !== "number") throw new ProxyError("The proxy did not return a spend total.", null);
+      total += metadata.total_spend;
+      if (metadata.has_more !== true) break;
+    }
     return total;
   }
 

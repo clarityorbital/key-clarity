@@ -3,7 +3,8 @@
 ## 0.3.3
 
 - Budget windows. LiteLLM 1.93 lets a key have several budgets that each reset on their own schedule, such as $200 a month and $20 a day (**Budget Windows** when generating a key). Key Clarity now shows them: the list shows the window closest to its limit, such as `$42.00 / $200.00 monthly`, and the hover shows each window's limit, spend in the current window, amount left and reset date, plus the key's all-time spend. You're warned when a window is nearly used up.
-- Spend per window comes from your proxy's daily spend records, read with the key itself or with another of your keys. It isn't shown for keys under **Other keys on the proxy**.
+- LiteLLM's Monthly window (`30d`) resets on the 1st of each month, so it's shown as monthly and its spend counts from the 1st. Likewise `24h` is daily and `7d` weekly.
+- LiteLLM doesn't record spend per window, so Key Clarity adds up the key's daily spend since the window began, read with the key itself or with another of your keys. Days are UTC. It isn't shown for keys under **Other keys on the proxy**.
 
 ## 0.3.2
 

@@ -15,10 +15,11 @@ const UNITS: Record<string, [string, string]> = {
   w: ["week", "weeks"],
   mo: ["month", "months"],
 };
-const SAME_AS: Record<string, string> = { "60m": "hour", "24h": "day", "7d": "week" };
+// LiteLLM resets 7d windows weekly and 30d windows on the 1st of each month, and its UI labels them so.
+const SAME_AS: Record<string, string> = { "60m": "hour", "24h": "day", "7d": "week", "30d": "month" };
 const ADVERBS: Record<string, string> = { hour: "hourly", day: "daily", week: "weekly", month: "monthly" };
 
-/** A LiteLLM budget duration in words: `1mo` is "month", `7d` is "week", `30d` is "30 days". */
+/** A LiteLLM budget duration in words: `1mo` and `30d` are "month", `7d` is "week", `14d` is "14 days". */
 export function periodName(duration: string): string {
   const m = /^(\d+)\s*(mo|s|m|h|d|w)$/.exec(duration.trim());
   if (!m) return duration;
@@ -85,13 +86,14 @@ export function budgetRows(info: Budget, now = Date.now()): Array<[string, strin
 
 const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86_400, w: 604_800 };
 
-/** When a budget window began: its next reset, less one period. */
+/** When a budget window began: its next reset, less one period. A 30d window is a calendar month, as LiteLLM resets it. */
 export function windowStart(w: Pick<BudgetWindow, "budgetDuration" | "resetAt">): Date | undefined {
   const reset = w.resetAt ? Date.parse(w.resetAt) : NaN;
   const m = /^(\d+)\s*(mo|s|m|h|d|w)$/.exec(w.budgetDuration.trim());
   if (Number.isNaN(reset) || !m) return undefined;
-  const n = Number(m[1]);
-  if (m[2] === "mo") {
+  const monthly = m[2] === "d" && m[1] === "30";
+  const n = monthly ? 1 : Number(m[1]);
+  if (m[2] === "mo" || monthly) {
     const start = new Date(reset);
     start.setUTCMonth(start.getUTCMonth() - n);
     return start;
