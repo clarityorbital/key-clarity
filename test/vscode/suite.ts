@@ -242,6 +242,28 @@ export async function run(): Promise<void> {
       proxy.teams.delete("team-r");
     });
 
+    await step("shows a key's monthly budget window with spend this month", async () => {
+      const now = new Date();
+      const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+      const windowed = proxy.seed("windowed", "user-1", {
+        allowed_routes: ["llm_api_routes"],
+        spend: 900,
+        budget_limits: JSON.stringify([{ budget_duration: "1mo", max_budget: 200, reset_at: nextMonth }]),
+      });
+      const held = await controller.store.add(windowed, "windowed");
+      proxy.dailySpend.push({ date: now.toISOString().slice(0, 10), api_key: held.hash, user_id: "user-1", spend: 42 });
+      await controller.refresh();
+      const node = (await tree.getChildren()).find((n) => n.kind === "held" && n.key.alias === "windowed");
+      assert.ok(node);
+      const item = tree.getTreeItem(node);
+      assert.equal(item.description, "$42.00 / $200.00 monthly");
+      const tooltip = (item.tooltip as vscode.MarkdownString).value.replace(/\\/g, "");
+      assert.match(tooltip, /\| Spent in total \| \$900\.00 \|/);
+      assert.match(tooltip, /\| Budget \| \$200\.00 per month \|/);
+      assert.match(tooltip, /\| Spent this month \| \$42\.00 \(21%\), \$158\.00 left \|/);
+      assert.match(tooltip, /\| Resets \| /);
+    });
+
     await step("runs the refresh command without error", async () => {
       await vscode.commands.executeCommand("keyClarity.refresh");
     });

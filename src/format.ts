@@ -1,4 +1,4 @@
-import type { Budget, KeyInfo, OwnerBudgets } from "./proxy/client";
+import type { Budget, BudgetWindow, KeyInfo, OwnerBudgets } from "./proxy/client";
 
 const DAY_MS = 86_400_000;
 
@@ -83,6 +83,51 @@ export function budgetRows(info: Budget, now = Date.now()): Array<[string, strin
   return rows;
 }
 
+const UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86_400, w: 604_800 };
+
+/** When a budget window began: its next reset, less one period. */
+export function windowStart(w: Pick<BudgetWindow, "budgetDuration" | "resetAt">): Date | undefined {
+  const reset = w.resetAt ? Date.parse(w.resetAt) : NaN;
+  const m = /^(\d+)\s*(mo|s|m|h|d|w)$/.exec(w.budgetDuration.trim());
+  if (Number.isNaN(reset) || !m) return undefined;
+  const n = Number(m[1]);
+  if (m[2] === "mo") {
+    const start = new Date(reset);
+    start.setUTCMonth(start.getUTCMonth() - n);
+    return start;
+  }
+  return new Date(reset - n * UNIT_SECONDS[m[2]] * 1000);
+}
+
+const asBudget = (w: BudgetWindow, spend: number): Budget => ({
+  spend,
+  maxBudget: w.maxBudget,
+  budgetDuration: w.budgetDuration,
+  budgetResetAt: w.resetAt,
+});
+
+/** A key's budget windows whose spend is known, as budgets. */
+export function windowBudgets(info: KeyInfo): Budget[] {
+  return info.budgetWindows.flatMap((w) => (w.spend === null ? [] : [asBudget(w, w.spend)]));
+}
+
+/** Rows for one budget window, like `budgetRows`, saying so when its spend isn't known. */
+export function budgetWindowRows(w: BudgetWindow, now = Date.now()): Array<[string, string]> {
+  const rows = budgetRows(asBudget(w, w.spend ?? 0), now);
+  if (w.spend === null) rows[1] = [rows[1][0], "not available"];
+  return rows;
+}
+
+/** The budget closest to its limit. */
+function tightest(budgets: Budget[]): Budget | undefined {
+  let best: Budget | undefined;
+  for (const b of budgets) {
+    const pct = budgetPercent(b);
+    if (pct !== undefined && (best === undefined || pct > budgetPercent(best)!)) best = b;
+  }
+  return best;
+}
+
 /** A user or team budget that also limits a key. */
 export interface SharedBudget {
   /** `member` is the user's own budget within a team. */
@@ -114,13 +159,18 @@ export function sharedLabel(shared: SharedBudget): string {
  * "$12.40 spent · you: $50.00 / $200.00 monthly".
  */
 export function spendSummary(info: KeyInfo, shared: SharedBudget[]): string {
+  // The key's own budget windows come first: the one closest to its limit, such as "$42.00 / $200.00 monthly".
+  const window = tightest(windowBudgets(info));
+  if (window) return budgetText(window);
+  const unknown = info.budgetWindows[0];
+  if (unknown) return `${budgetText(info)} · ${money(unknown.maxBudget)} ${periodAdverb(unknown.budgetDuration)} limit`;
   const outer = info.maxBudget === null ? shared[0] : undefined;
   return outer ? `${budgetText(info)} · ${sharedLabel(outer)}: ${budgetText(outer.budget)}` : budgetText(info);
 }
 
 /** The highest share used of any budget that limits the key. */
 export function highestPercent(info: KeyInfo, shared: SharedBudget[]): number | undefined {
-  const all = [info, ...shared.map((s) => s.budget)].map(budgetPercent).filter((p): p is number => p !== undefined);
+  const all = [info, ...windowBudgets(info), ...shared.map((s) => s.budget)].map(budgetPercent).filter((p): p is number => p !== undefined);
   return all.length ? Math.max(...all) : undefined;
 }
 
@@ -146,7 +196,9 @@ export function keyWarnings(alias: string, info: KeyInfo, opts: { budgetPercent:
   if (info.blocked || info.status === "revoked") {
     out.push({ kind: "blocked", message: `Key "${alias}" is blocked on the proxy.` });
   }
-  const budget = budgetWarning(`Key "${alias}" has`, "its", info, opts.budgetPercent, now);
+  // One budget warning per key, for whichever of its budgets is closest to the limit.
+  const closest = tightest([info, ...windowBudgets(info)]);
+  const budget = closest && budgetWarning(`Key "${alias}" has`, "its", closest, opts.budgetPercent, now);
   if (budget) out.push({ kind: "budget", message: budget });
   if (info.expires && !Number.isNaN(Date.parse(info.expires))) {
     const ms = Date.parse(info.expires) - now;

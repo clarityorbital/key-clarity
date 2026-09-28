@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Controller } from "../controller";
-import { budgetRows, expiryText, highestPercent, spendSummary, type SharedBudget } from "../format";
+import { budgetRows, budgetWindowRows, expiryText, highestPercent, money, spendSummary, type SharedBudget } from "../format";
 import { maskKey, type HeldKey } from "../keys/keyStore";
 import type { Budget, KeyInfo, RemoteKey } from "../proxy/client";
 
@@ -112,7 +112,11 @@ function escapedBudgetRows(budget: Budget): Array<[string, string]> {
 function detailsTable(masked: string, info: KeyInfo, active: string[], shared: SharedBudget[]): string {
   const rows: Array<[string, string]> = [
     ["Key", `\`${masked.replace(/`/g, "")}\``],
-    ...escapedBudgetRows(info),
+    // With budget windows and no other key budget, the key's own spend is its all-time total.
+    ...(info.budgetWindows.length && info.maxBudget === null && !info.budgetDuration
+      ? [["Spent in total", escape(money(info.spend))] as [string, string]]
+      : escapedBudgetRows(info)),
+    ...info.budgetWindows.flatMap((w) => budgetWindowRows(w).map(([k, v]): [string, string] => [k, escape(v)])),
   ];
   rows.push(["Expires", info.expires ? `${new Date(info.expires).toLocaleString()} (${expiryText(info)})` : "never"]);
   rows.push(["Models", info.models.length ? info.models.map(escape).join(", ") : "all models the proxy allows"]);

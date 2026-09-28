@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { chmod, realpath, rm } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { sharedBudgets, type SharedBudget } from "./format";
+import { sharedBudgets, windowStart, type SharedBudget } from "./format";
 import { KeyStore, type HeldKey } from "./keys/keyStore";
 import { LiteLLMClient, ProxyError, type KeyInfo, type OwnerBudgets, type RemoteKey } from "./proxy/client";
 import { fetchKeyStatus, type KeyStatus } from "./proxy/keyStatus";
@@ -140,8 +140,35 @@ export class Controller implements vscode.Disposable {
       if (!keys.some((k) => k.hash === hash)) this.status.delete(hash);
     }
     this.owner = account ? await client.ownerBudgets(account).catch(() => undefined) : undefined;
+    await Promise.all(keys.map((k) => this.fillWindowSpend(client, account, k, this.status.get(k.hash)?.info)));
     this.remote = account ? await this.fetchRemote(client, account, keys).catch(() => []) : [];
     this.fireChanged();
+  }
+
+  /**
+   * Fills in spend for a key's budget windows, which the proxy only reports by date range. Asks with
+   * the key itself, else the account key when it's the same user's: the proxy scopes spend to the
+   * caller's user, so another user's key would see none.
+   */
+  private async fillWindowSpend(client: LiteLLMClient, account: string | undefined, key: HeldKey, info: KeyInfo | undefined): Promise<void> {
+    if (!info?.budgetWindows.length) return;
+    const auth = [key.secret];
+    if (account && account !== key.secret && this.owner?.userId && this.owner.userId === info.userId) auth.push(account);
+    const today = new Date().toISOString().slice(0, 10);
+    await Promise.all(
+      info.budgetWindows.map(async (w) => {
+        const start = windowStart(w);
+        if (!start) return;
+        for (const a of auth) {
+          try {
+            w.spend = await client.keySpend(a, key.hash, start.toISOString().slice(0, 10), today);
+            return;
+          } catch {
+            // Try the next key, or leave the spend unknown.
+          }
+        }
+      }),
+    );
   }
 
   /** User and team budgets that also limit a key. */

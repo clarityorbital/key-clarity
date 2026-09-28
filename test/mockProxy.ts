@@ -19,6 +19,8 @@ interface Row {
   models: string[];
   user_id: string;
   team_id?: string | null;
+  /** Budget windows (LiteLLM 1.93+), as the proxy stores them: JSON text. */
+  budget_limits?: string | null;
   /** `["llm_api_routes"]` limits the key to model calls, as many proxies configure. */
   allowed_routes: string[];
 }
@@ -40,6 +42,8 @@ export interface MockProxy {
   models: string[];
   /** Adds a key owned by `userId` and returns its secret. */
   seed(alias: string, userId?: string, extra?: Partial<Row>): string;
+  /** Rows of the daily spend table: spend per key per UTC date. */
+  dailySpend: Array<{ date: string; api_key: string; user_id: string; spend: number }>;
   /** Every request, with the credential from `Authorization: Bearer` or `x-api-key`. */
   requests: Array<{ method: string; path: string; auth: string | undefined }>;
   close(): Promise<void>;
@@ -51,6 +55,7 @@ export async function startMockProxy(): Promise<MockProxy> {
   const rows = new Map<string, Row>();
   const users: MockProxy["users"] = new Map();
   const teams: MockProxy["teams"] = new Map();
+  const dailySpend: MockProxy["dailySpend"] = [];
   const requests: MockProxy["requests"] = [];
   const models = ["claude-sonnet-5", "gpt-5.6-terra", "gpt-6-sol"];
 
@@ -114,6 +119,15 @@ export async function startMockProxy(): Promise<MockProxy> {
         .filter(([, t]) => t.members.includes(userId))
         .map(([team_id, { members, member_budgets, ...t }]) => ({ team_id, ...t }));
       return send(200, { user_id: userId, user_info: users.get(userId) ?? null, keys: [], teams: memberOf });
+    }
+    if (req.method === "GET" && url.pathname === "/user/daily/activity/aggregated") {
+      const [start, end, apiKey] = ["start_date", "end_date", "api_key"].map((p) => url.searchParams.get(p));
+      if (!start || !end) return send(400, { detail: { error: "Please provide start_date and end_date" } });
+      // Non-admins only see their own user's spend.
+      const total = dailySpend
+        .filter((r) => r.user_id === caller.user_id && (!apiKey || r.api_key === apiKey) && r.date >= start && r.date <= end)
+        .reduce((sum, r) => sum + r.spend, 0);
+      return send(200, { results: [], metadata: { total_spend: total, total_pages: 1, has_more: false } });
     }
     if (req.method === "GET" && url.pathname === "/team/info") {
       const teamId = url.searchParams.get("team_id") ?? "";
@@ -179,6 +193,7 @@ export async function startMockProxy(): Promise<MockProxy> {
     rows,
     users,
     teams,
+    dailySpend,
     models,
     seed,
     requests,

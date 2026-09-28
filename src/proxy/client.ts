@@ -11,7 +11,21 @@ export interface Budget {
   budgetResetAt: string | null;
 }
 
+/**
+ * One of a key's budget windows (LiteLLM's `budget_limits`, 1.93 and later): a limit per period, each
+ * resetting on its own schedule. The proxy doesn't store spend per window; see `LiteLLMClient.keySpend`.
+ */
+export interface BudgetWindow {
+  maxBudget: number;
+  budgetDuration: string;
+  resetAt: string | null;
+  /** Spend in the current window, when known. */
+  spend: number | null;
+}
+
 export interface KeyInfo extends Budget {
+  /** Spend-limit windows besides `maxBudget`; empty when the key has none or the proxy predates them. */
+  budgetWindows: BudgetWindow[];
   alias: string | null;
   expires: string | null;
   models: string[];
@@ -128,6 +142,18 @@ export class LiteLLMClient {
     const path = keyHash ? `/key/info?key=${encodeURIComponent(keyHash)}` : "/key/info";
     const body = await this.request("GET", path, authKey);
     return parseKeyInfo(asRecord(asRecord(body).info));
+  }
+
+  /**
+   * A key's spend from `startDate` through `endDate` (UTC dates, `YYYY-MM-DD`), from the proxy's daily
+   * spend table. `authKey` must belong to the same user as the key, and may be the key itself.
+   */
+  async keySpend(authKey: string, keyHash: string, startDate: string, endDate: string): Promise<number> {
+    const params = new URLSearchParams({ start_date: startDate, end_date: endDate, api_key: keyHash });
+    const body = asRecord(await this.request("GET", `/user/daily/activity/aggregated?${params}`, authKey));
+    const total = asRecord(body.metadata).total_spend;
+    if (typeof total !== "number") throw new ProxyError("The proxy did not return a spend total.", null);
+    return total;
   }
 
   /**
@@ -273,6 +299,7 @@ function parseKeyInfo(row: Record<string, unknown>): KeyInfo {
     maxBudget: own.maxBudget ?? num(tier.max_budget),
     budgetDuration: own.budgetDuration ?? str(tier.budget_duration),
     budgetResetAt: own.budgetDuration ? own.budgetResetAt : (str(tier.budget_reset_at) ?? own.budgetResetAt),
+    budgetWindows: parseWindows(row.budget_limits),
     alias: typeof row.key_alias === "string" ? row.key_alias : null,
     expires: typeof row.expires === "string" ? row.expires : null,
     models: Array.isArray(row.models) ? row.models.filter((m): m is string => typeof m === "string") : [],
@@ -281,6 +308,28 @@ function parseKeyInfo(row: Record<string, unknown>): KeyInfo {
     blocked: row.blocked === true,
     status: typeof row.status === "string" ? row.status : null,
   };
+}
+
+/** `budget_limits` arrives as a list, or as the JSON text of one. */
+function parseWindows(value: unknown): BudgetWindow[] {
+  let list = value;
+  if (typeof list === "string") {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  const out: BudgetWindow[] = [];
+  for (const item of list) {
+    const w = asRecord(item);
+    const maxBudget = num(w.max_budget);
+    const budgetDuration = str(w.budget_duration);
+    if (maxBudget === null || !budgetDuration) continue;
+    out.push({ maxBudget, budgetDuration, resetAt: str(w.reset_at), spend: null });
+  }
+  return out;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

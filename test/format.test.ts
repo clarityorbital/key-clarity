@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   budgetRows,
   budgetText,
+  budgetWindowRows,
   expiryText,
   highestPercent,
   keyWarnings,
@@ -11,6 +12,7 @@ import {
   sharedBudgets,
   sharedWarnings,
   spendSummary,
+  windowStart,
 } from "../src/format";
 import type { KeyInfo, OwnerBudgets } from "../src/proxy/client";
 
@@ -21,6 +23,7 @@ const info = (over: Partial<KeyInfo> = {}): KeyInfo => ({
   maxBudget: null,
   budgetDuration: null,
   budgetResetAt: null,
+  budgetWindows: [],
   expires: null,
   models: [],
   userId: null,
@@ -168,5 +171,37 @@ describe("user and team budgets", () => {
       id: "member:research",
       message: `You have used 95% of your monthly budget in team "research" ($190.00 / $200.00); it resets in 4 days.`,
     });
+  });
+});
+
+describe("budget windows", () => {
+  const monthly = { maxBudget: 200, budgetDuration: "1mo", resetAt: "2026-10-01T00:00:00+00:00", spend: 42 };
+  const daily = { maxBudget: 20, budgetDuration: "1d", resetAt: "2026-09-27T00:00:00+00:00", spend: 19 };
+
+  it("works out when a window began", () => {
+    expect(windowStart(monthly)?.toISOString()).toBe("2026-09-01T00:00:00.000Z");
+    expect(windowStart(daily)?.toISOString()).toBe("2026-09-26T00:00:00.000Z");
+    expect(windowStart({ budgetDuration: "7d", resetAt: "2026-09-28T00:00:00Z" })?.toISOString()).toBe("2026-09-21T00:00:00.000Z");
+    expect(windowStart({ budgetDuration: "1mo", resetAt: null })).toBeUndefined();
+  });
+
+  it("summarizes the window closest to its limit", () => {
+    expect(spendSummary(info({ spend: 900, budgetWindows: [monthly] }), [])).toBe("$42.00 / $200.00 monthly");
+    expect(spendSummary(info({ spend: 900, budgetWindows: [monthly, daily] }), [])).toBe("$19.00 / $20.00 daily");
+    expect(spendSummary(info({ spend: 900, budgetWindows: [{ ...monthly, spend: null }] }), [])).toBe("$900.00 spent · $200.00 monthly limit");
+    expect(highestPercent(info({ budgetWindows: [monthly, daily] }), [])).toBe(95);
+  });
+
+  it("lists a window's rows, noting unknown spend", () => {
+    expect(budgetWindowRows(monthly, now).slice(0, 2)).toEqual([
+      ["Budget", "$200.00 per month"],
+      ["Spent this month", "$42.00 (21%), $158.00 left"],
+    ]);
+    expect(budgetWindowRows({ ...monthly, spend: null }, now)[1]).toEqual(["Spent this month", "not available"]);
+  });
+
+  it("warns about the window closest to its limit", () => {
+    const w = keyWarnings("proj", info({ budgetWindows: [monthly, { ...daily, resetAt: "2026-09-27T00:00:00Z" }] }), opts, now);
+    expect(w).toEqual([{ kind: "budget", message: `Key "proj" has used 95% of its daily budget ($19.00 / $20.00); it resets today.` }]);
   });
 });

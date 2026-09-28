@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3
+
+- Budget windows. LiteLLM 1.93 lets a key have several budgets that each reset on their own schedule, such as $200 a month and $20 a day (**Budget Windows** when generating a key). Key Clarity now shows them: the list shows the window closest to its limit, such as `$42.00 / $200.00 monthly`, and the hover shows each window's limit, spend in the current window, amount left and reset date, plus the key's all-time spend. You're warned when a window is nearly used up.
+- Spend per window comes from your proxy's daily spend records, read with the key itself or with another of your keys. It isn't shown for keys under **Other keys on the proxy**.
+
 ## 0.3.2
 
 - Team member budgets. When your team gives each member their own budget, such as $200 a month on top of the team's total, a key in that team now shows it: `$12.40 spent · you: $150.00 / $200.00 monthly`. The hover lists it under **Your budget in team …**, with spend this month, the amount left and the reset date, above the team's total budget. You're warned when it's nearly used up.

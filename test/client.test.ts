@@ -105,6 +105,28 @@ describe("LiteLLMClient", () => {
     expect(await client.ownerBudgets(secret)).toEqual({ userId: "user-9", user: null, teams: [] });
   });
 
+  it("reads budget windows and a key's spend over a date range", async () => {
+    const windows = [
+      { budget_duration: "1mo", max_budget: 200, reset_at: "2026-10-01T00:00:00+00:00" },
+      { budget_duration: "1d", max_budget: 20, reset_at: "2026-09-29T00:00:00+00:00" },
+    ];
+    const secret = proxy.seed("windowed", "user-10", { spend: 900, budget_limits: JSON.stringify(windows) });
+    expect((await client.keyInfo(secret)).budgetWindows).toEqual([
+      { maxBudget: 200, budgetDuration: "1mo", resetAt: "2026-10-01T00:00:00+00:00", spend: null },
+      { maxBudget: 20, budgetDuration: "1d", resetAt: "2026-09-29T00:00:00+00:00", spend: null },
+    ]);
+    const hash = hashKey(secret);
+    proxy.dailySpend.push(
+      { date: "2026-08-31", api_key: hash, user_id: "user-10", spend: 500 },
+      { date: "2026-09-01", api_key: hash, user_id: "user-10", spend: 30 },
+      { date: "2026-09-28", api_key: hash, user_id: "user-10", spend: 12 },
+      { date: "2026-09-28", api_key: "another-key", user_id: "user-10", spend: 7 },
+    );
+    expect(await client.keySpend(secret, hash, "2026-09-01", "2026-09-28")).toBe(42);
+    // Another user's key sees none of it: the proxy scopes spend to the caller's user.
+    expect(await client.keySpend(proxy.seed("stranger", "user-11"), hash, "2026-09-01", "2026-09-28")).toBe(0);
+  });
+
   it("lists the user's keys with hashes that match sha256 of the secret", async () => {
     const secret = proxy.seed("beta", "user-2");
     proxy.seed("gamma", "user-2");
