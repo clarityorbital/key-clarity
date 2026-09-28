@@ -17,8 +17,8 @@ Switch Claude Code and Codex between your [LiteLLM](https://github.com/BerriAI/l
 
 ## What it does
 
-- **One list of your keys.** A **Key Clarity** view in the Activity Bar shows every key you've added, with spend against budget and days until expiry. Your other keys on the proxy appear under **Other keys on the proxy**.
-- **Add or create keys.** Paste an existing key, or generate a new one with a name, allowed models, budget and expiry.
+- **One list of your keys.** A **Key Clarity** view in the Activity Bar shows every key you've added, with spend against budget and days until expiry. Hover a key for its budget: a monthly (or weekly, daily) budget shows what's been spent this period, what's left, and when it resets; a total budget shows lifetime spend against the cap. Budgets set through a LiteLLM budget tier are shown too. Your other keys on the proxy appear under **Other keys on the proxy**.
+- **Add or create keys.** Paste an existing key, or generate a new one with a name, allowed models, budget (monthly, weekly, daily or total) and expiry.
 - **One-click switching** for Claude Code, Codex, or both. This covers the VS Code panels and the `claude` and `codex` commands, because each tool's panel and CLI read the same config file.
 - **Per-workspace keys for Claude Code**, so each repo can bill to its own key.
 - **Status bar badge**, such as `alpha · $12.40 / $50.00`. Click it to switch.

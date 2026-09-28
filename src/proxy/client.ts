@@ -3,8 +3,11 @@
 
 export interface KeyInfo {
   alias: string | null;
+  /** Spend in the current budget period; LiteLLM resets it to 0 when the period ends. */
   spend: number;
   maxBudget: number | null;
+  /** How often the budget resets, such as `1mo` or `30d`. Null for a total budget that never resets. */
+  budgetDuration: string | null;
   budgetResetAt: string | null;
   expires: string | null;
   models: string[];
@@ -24,6 +27,8 @@ export interface GenerateKeyRequest {
   alias: string;
   models?: string[];
   maxBudget?: number;
+  /** Reset period for `maxBudget`, such as `1mo`. */
+  budgetDuration?: string;
   duration?: string;
 }
 
@@ -133,6 +138,7 @@ export class LiteLLMClient {
     const payload: Record<string, unknown> = { key_alias: req.alias };
     if (req.models && req.models.length > 0) payload.models = req.models;
     if (req.maxBudget !== undefined) payload.max_budget = req.maxBudget;
+    if (req.budgetDuration) payload.budget_duration = req.budgetDuration;
     if (req.duration) payload.duration = req.duration;
     const body = asRecord(await this.request("POST", "/key/generate", authKey, payload));
     if (typeof body.key !== "string" || body.key.length === 0) {
@@ -199,11 +205,18 @@ export class LiteLLMClient {
 }
 
 function parseKeyInfo(row: Record<string, unknown>): KeyInfo {
+  // A key linked to a budget tier takes the tier's limit and period wherever it has none of its own,
+  // the same way the proxy enforces them.
+  const tier = asRecord(row.litellm_budget_table);
+  const num = (v: unknown) => (typeof v === "number" ? v : null);
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const ownDuration = str(row.budget_duration);
   return {
     alias: typeof row.key_alias === "string" ? row.key_alias : null,
     spend: typeof row.spend === "number" ? row.spend : 0,
-    maxBudget: typeof row.max_budget === "number" ? row.max_budget : null,
-    budgetResetAt: typeof row.budget_reset_at === "string" ? row.budget_reset_at : null,
+    maxBudget: num(row.max_budget) ?? num(tier.max_budget),
+    budgetDuration: ownDuration ?? str(tier.budget_duration),
+    budgetResetAt: ownDuration ? str(row.budget_reset_at) : (str(tier.budget_reset_at) ?? str(row.budget_reset_at)),
     expires: typeof row.expires === "string" ? row.expires : null,
     models: Array.isArray(row.models) ? row.models.filter((m): m is string => typeof m === "string") : [],
     userId: typeof row.user_id === "string" ? row.user_id : null,

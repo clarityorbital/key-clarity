@@ -50,6 +50,23 @@ describe("LiteLLMClient", () => {
     expect(info).toMatchObject({ alias: "alpha", spend: 12.4, maxBudget: 50, models: ["gpt-5.6-terra"], userId: "user-1" });
   });
 
+  it("reads a key's own monthly budget", async () => {
+    const secret = proxy.seed("monthly", "user-1", { max_budget: 200, budget_duration: "1mo", budget_reset_at: "2026-10-01T00:00:00Z" });
+    expect(await client.keyInfo(secret)).toMatchObject({ maxBudget: 200, budgetDuration: "1mo", budgetResetAt: "2026-10-01T00:00:00Z" });
+  });
+
+  it("takes the budget and period from a linked budget tier when the key has none", async () => {
+    const tier = { max_budget: 200, budget_duration: "1mo", budget_reset_at: "2026-10-01T00:00:00Z" };
+    const onTier = proxy.seed("on-tier", "user-1", { litellm_budget_table: tier });
+    expect(await client.keyInfo(onTier)).toMatchObject({ maxBudget: 200, budgetDuration: "1mo", budgetResetAt: tier.budget_reset_at });
+    // The key's own limit wins over the tier's, and still resets on the tier's schedule.
+    const override = proxy.seed("override", "user-1", { max_budget: 500, litellm_budget_table: tier });
+    expect(await client.keyInfo(override)).toMatchObject({ maxBudget: 500, budgetDuration: "1mo" });
+    // A total budget with no tier never resets.
+    const total = proxy.seed("total", "user-1", { max_budget: 500 });
+    expect(await client.keyInfo(total)).toMatchObject({ maxBudget: 500, budgetDuration: null, budgetResetAt: null });
+  });
+
   it("lists the user's keys with hashes that match sha256 of the secret", async () => {
     const secret = proxy.seed("beta", "user-2");
     proxy.seed("gamma", "user-2");
@@ -61,10 +78,16 @@ describe("LiteLLMClient", () => {
 
   it("generates, renames and deletes a key", async () => {
     const account = proxy.seed("account", "user-4");
-    const created = await client.generateKey(account, { alias: "new-one", models: ["gpt-6-sol"], maxBudget: 20, duration: "30d" });
+    const created = await client.generateKey(account, {
+      alias: "new-one",
+      models: ["gpt-6-sol"],
+      maxBudget: 20,
+      budgetDuration: "1mo",
+      duration: "30d",
+    });
     expect(created.key).toMatch(/^sk-/);
     expect(created.alias).toBe("new-one");
-    expect((await client.keyInfo(created.key)).maxBudget).toBe(20);
+    expect(await client.keyInfo(created.key)).toMatchObject({ maxBudget: 20, budgetDuration: "1mo" });
 
     await client.updateAlias(account, hashKey(created.key), "renamed");
     expect((await client.keyInfo(created.key)).alias).toBe("renamed");

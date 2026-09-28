@@ -11,6 +11,10 @@ interface Row {
   key_name: string;
   spend: number;
   max_budget: number | null;
+  budget_duration?: string | null;
+  budget_reset_at?: string | null;
+  /** A linked budget tier, which `/key/info` includes. */
+  litellm_budget_table?: { max_budget?: number | null; budget_duration?: string | null; budget_reset_at?: string | null } | null;
   expires: string | null;
   models: string[];
   user_id: string;
@@ -101,6 +105,7 @@ export async function startMockProxy(): Promise<MockProxy> {
       const secret = seed(body.key_alias ?? null, caller.user_id, {
         models: body.models ?? [],
         max_budget: body.max_budget ?? null,
+        budget_duration: body.budget_duration ?? null,
         expires: body.duration ? new Date(Date.now() + 30 * 86_400_000).toISOString() : null,
       });
       return send(200, { key: secret, key_alias: body.key_alias ?? null, expires: rows.get(sha(secret))?.expires });

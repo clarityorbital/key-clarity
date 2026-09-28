@@ -300,7 +300,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
     const account = await requireAccountKey();
     if (!account) return;
     const alias = await vscode.window.showInputBox({
-      title: "Key Clarity: generate a key (1/4)",
+      title: "Key Clarity: generate a key (1/5)",
       prompt: "Name for the new key",
       placeHolder: "project-x",
       ignoreFocusOut: true,
@@ -312,7 +312,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
     let models: string[] | undefined;
     if (available.length > 0) {
       const picked = await vscode.window.showQuickPick(available, {
-        title: "Key Clarity: generate a key (2/4)",
+        title: "Key Clarity: generate a key (2/5)",
         placeHolder: "Models the key may call. Leave all unchecked to allow every model your account can use.",
         canPickMany: true,
         ignoreFocusOut: true,
@@ -322,7 +322,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
     }
 
     const budget = await vscode.window.showInputBox({
-      title: "Key Clarity: generate a key (3/4)",
+      title: "Key Clarity: generate a key (3/5)",
       prompt: "Maximum budget in USD. Leave empty for no key-level budget.",
       placeHolder: "50",
       ignoreFocusOut: true,
@@ -330,8 +330,25 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
     });
     if (budget === undefined) return;
 
+    let budgetDuration: string | undefined;
+    if (budget.trim()) {
+      const periods = [
+        { label: "Monthly", description: "Resets every month", value: "1mo" },
+        { label: "Weekly", description: "Resets every 7 days", value: "7d" },
+        { label: "Daily", description: "Resets every day", value: "1d" },
+        { label: "Total", description: "Never resets", value: undefined },
+      ];
+      const period = await vscode.window.showQuickPick(periods, {
+        title: "Key Clarity: generate a key (4/5)",
+        placeHolder: `How often the $${Number(budget)} budget resets`,
+        ignoreFocusOut: true,
+      });
+      if (!period) return;
+      budgetDuration = period.value;
+    }
+
     const duration = await vscode.window.showInputBox({
-      title: "Key Clarity: generate a key (4/4)",
+      title: "Key Clarity: generate a key (5/5)",
       prompt: "Expire after, such as 30d or 12h. Leave empty for no expiry.",
       placeHolder: "30d",
       ignoreFocusOut: true,
@@ -344,6 +361,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
         alias: alias.trim(),
         models,
         maxBudget: budget.trim() ? Number(budget) : undefined,
+        budgetDuration,
         duration: duration.trim() || undefined,
       }),
     );

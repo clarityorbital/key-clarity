@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Controller } from "../controller";
-import { budgetPercent, budgetText, expiryText, money } from "../format";
+import { budgetPercent, budgetRows, budgetText, expiryText } from "../format";
 import { maskKey, type HeldKey } from "../keys/keyStore";
 import type { KeyInfo, RemoteKey } from "../proxy/client";
 
@@ -101,9 +101,9 @@ function escape(s: string): string {
 function detailsTable(masked: string, info: KeyInfo, active: string[]): string {
   const rows: Array<[string, string]> = [
     ["Key", `\`${masked.replace(/`/g, "")}\``],
-    ["Spend", info.maxBudget !== null ? `${money(info.spend)} of ${money(info.maxBudget)}` : money(info.spend)],
+    // The period comes from the proxy, so escape it like other proxy-supplied text.
+    ...budgetRows(info).map(([k, v]): [string, string] => [k, escape(v)]),
   ];
-  if (info.budgetResetAt) rows.push(["Budget resets", new Date(info.budgetResetAt).toLocaleString()]);
   rows.push(["Expires", info.expires ? `${new Date(info.expires).toLocaleString()} (${expiryText(info)})` : "never"]);
   rows.push(["Models", info.models.length ? info.models.map(escape).join(", ") : "all models the proxy allows"]);
   if (info.blocked) rows.push(["Status", "blocked"]);

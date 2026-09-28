@@ -68,7 +68,12 @@ export async function run(): Promise<void> {
     });
 
     const secretA = proxy.seed("alpha", "user-1", { spend: 46, max_budget: 50 });
-    const secretB = proxy.seed("beta", "user-1", { models: ["gpt-6-sol"] });
+    const resetAt = new Date(Date.now() + 10.5 * 86_400_000).toISOString();
+    const secretB = proxy.seed("beta", "user-1", {
+      models: ["gpt-6-sol"],
+      spend: 12.4,
+      litellm_budget_table: { max_budget: 200, budget_duration: "1mo", budget_reset_at: resetAt },
+    });
     proxy.seed("gamma-not-held", "user-1");
     const a = hashKey(secretA);
     const b = hashKey(secretB);
@@ -85,6 +90,13 @@ export async function run(): Promise<void> {
       const alphaItem = tree.getTreeItem(nodes[0]);
       assert.equal(alphaItem.label, "alpha");
       assert.equal(alphaItem.description, "$46.00 / $50.00");
+      const betaItem = tree.getTreeItem(nodes[1]);
+      assert.equal(betaItem.description, "$12.40 / $200.00 monthly");
+      // Drop Markdown escapes to compare the visible text.
+      const tooltip = (betaItem.tooltip as vscode.MarkdownString).value.replace(/\\/g, "");
+      assert.match(tooltip, /\| Budget \| \$200\.00 per month \|/);
+      assert.match(tooltip, /\| Spent this month \| \$12\.40 \(6%\), \$187\.60 left \|/);
+      assert.match(tooltip, /\| Resets \| .* \(in 10 days\) \|/);
     });
 
     await step("ignores a proxy URL set by the workspace (a cloned repo can't redirect keys)", async () => {

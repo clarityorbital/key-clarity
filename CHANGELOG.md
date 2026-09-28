@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Monthly budgets. A key whose budget resets on a schedule (LiteLLM's `budget_duration`) now shows as `$12.40 / $200.00 monthly`. Hovering it shows the budget per period, spend this period with the amount left, and when it resets. Total budgets show as `$500.00 total`.
+- Keys linked to a LiteLLM budget tier show the tier's budget and reset period when the key has none of its own.
+- Budget warnings name the period and when it resets, such as "has used 95% of its monthly budget … it resets in 4 days."
+- **Generate New Key** asks how often the budget resets: monthly, weekly, daily, or never (total).
+
 ## 0.2.1
 
 - The publisher ID is now `clarity-orbital`, matching the Marketplace publisher, so the extension ID is `clarity-orbital.key-clarity`. If you installed an earlier build from a `.vsix`, uninstall `clarityorbital.key-clarity` first. The two IDs keep their stored keys separately.
