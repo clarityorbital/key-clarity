@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { Controller } from "./controller";
-import { keyWarnings } from "./format";
+import { keyWarnings, sharedWarnings } from "./format";
 import { registerCommands } from "./ui/commands";
 import { KeysTreeProvider } from "./ui/keysTree";
 import { StatusBar } from "./ui/statusBar";
@@ -31,10 +31,14 @@ export function activate(ctx: vscode.ExtensionContext): TestApi | undefined {
     for (const key of await controller.store.list()) {
       const info = controller.status.get(key.hash)?.info;
       if (!info || controller.activeLabels(key.hash).length === 0) continue;
-      for (const w of keyWarnings(key.alias, info, opts)) {
-        const id = `${key.hash}:${w.kind}`;
-        if (warned.has(id)) continue;
-        warned.add(id);
+      const warnings = [
+        ...keyWarnings(key.alias, info, opts).map((w) => ({ id: `${key.hash}:${w.kind}`, message: w.message })),
+        // User and team budgets are shared, so warn about each once, not once per key.
+        ...sharedWarnings(controller.sharedBudgets(info), opts),
+      ];
+      for (const w of warnings) {
+        if (warned.has(w.id)) continue;
+        warned.add(w.id);
         void vscode.window.showWarningMessage(w.message, "Switch Key").then((c) => {
           if (c) void vscode.commands.executeCommand("keyClarity.switchKey");
         });

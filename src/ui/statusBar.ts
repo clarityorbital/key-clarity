@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { Controller } from "../controller";
-import { budgetPercent, budgetText } from "../format";
+import { highestPercent, spendSummary } from "../format";
 
 /** Shows the key in use for Claude Code and Codex; clicking opens the key switcher. */
 export class StatusBar implements vscode.Disposable {
@@ -36,10 +36,11 @@ export class StatusBar implements vscode.Disposable {
 
     const primary = claudeHash ?? codexHash;
     const info = primary ? this.controller.status.get(primary)?.info : undefined;
-    const spend = info && (claudeHash === codexHash || !codex || !claude) ? ` · ${budgetText(info)}` : "";
+    const shared = info ? this.controller.sharedBudgets(info) : [];
+    const spend = info && (claudeHash === codexHash || !codex || !claude) ? ` · ${spendSummary(info, shared)}` : "";
     this.item.text = `$(key) ${label}${spend}`;
 
-    const pct = info ? budgetPercent(info) : undefined;
+    const pct = info ? highestPercent(info, shared) : undefined;
     const threshold = vscode.workspace.getConfiguration("keyClarity").get<number>("budgetWarningPercent") ?? 90;
     this.item.backgroundColor = pct !== undefined && pct >= threshold ? new vscode.ThemeColor("statusBarItem.warningBackground") : undefined;
 

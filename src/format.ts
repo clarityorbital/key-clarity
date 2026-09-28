@@ -1,4 +1,4 @@
-import type { KeyInfo } from "./proxy/client";
+import type { Budget, KeyInfo, OwnerBudgets } from "./proxy/client";
 
 const DAY_MS = 86_400_000;
 
@@ -39,7 +39,7 @@ function thisPeriod(duration: string): string {
   return name in ADVERBS ? `this ${name}` : "this period";
 }
 
-export function budgetText(info: KeyInfo): string {
+export function budgetText(info: Budget): string {
   const period = info.budgetDuration;
   if (info.maxBudget !== null) {
     const base = `${money(info.spend)} / ${money(info.maxBudget)}`;
@@ -49,7 +49,7 @@ export function budgetText(info: KeyInfo): string {
 }
 
 /** When a periodic budget next resets, such as "resets in 3 days". */
-export function resetText(info: KeyInfo, now = Date.now()): string | undefined {
+export function resetText(info: Budget, now = Date.now()): string | undefined {
   if (!info.budgetDuration || !info.budgetResetAt || Number.isNaN(Date.parse(info.budgetResetAt))) return undefined;
   const ms = Date.parse(info.budgetResetAt) - now;
   if (ms <= 0) return "resets soon";
@@ -58,8 +58,8 @@ export function resetText(info: KeyInfo, now = Date.now()): string | undefined {
   return days === 1 ? "resets in 1 day" : `resets in ${days} days`;
 }
 
-/** Budget, spend and reset rows for a key's details, as label and plain-text value. */
-export function budgetRows(info: KeyInfo, now = Date.now()): Array<[string, string]> {
+/** Budget, spend and reset rows for a key, user or team, as label and plain-text value. */
+export function budgetRows(info: Budget, now = Date.now()): Array<[string, string]> {
   const period = info.budgetDuration;
   const limit = info.maxBudget;
   const rows: Array<[string, string]> = [];
@@ -83,6 +83,45 @@ export function budgetRows(info: KeyInfo, now = Date.now()): Array<[string, stri
   return rows;
 }
 
+/** A user or team budget that also limits a key. */
+export interface SharedBudget {
+  scope: "user" | "team";
+  /** The team's alias or id; null for the user. */
+  name: string | null;
+  budget: Budget;
+}
+
+/** The user and team budgets with a limit that apply to a key, user first. */
+export function sharedBudgets(info: Pick<KeyInfo, "userId" | "teamId">, owner: OwnerBudgets | undefined): SharedBudget[] {
+  if (!owner) return [];
+  const out: SharedBudget[] = [];
+  if (owner.user && owner.user.maxBudget !== null && info.userId && info.userId === owner.userId) {
+    out.push({ scope: "user", name: null, budget: owner.user });
+  }
+  const team = info.teamId ? owner.teams.find((t) => t.id === info.teamId) : undefined;
+  if (team && team.maxBudget !== null) out.push({ scope: "team", name: team.alias ?? team.id, budget: team });
+  return out;
+}
+
+export function sharedLabel(shared: SharedBudget): string {
+  return shared.scope === "user" ? "you" : `team ${shared.name}`;
+}
+
+/**
+ * The key's spend, plus the budget that limits it when the key has none of its own:
+ * "$12.40 spent · you: $50.00 / $200.00 monthly".
+ */
+export function spendSummary(info: KeyInfo, shared: SharedBudget[]): string {
+  const outer = info.maxBudget === null ? shared[0] : undefined;
+  return outer ? `${budgetText(info)} · ${sharedLabel(outer)}: ${budgetText(outer.budget)}` : budgetText(info);
+}
+
+/** The highest share used of any budget that limits the key. */
+export function highestPercent(info: KeyInfo, shared: SharedBudget[]): number | undefined {
+  const all = [info, ...shared.map((s) => s.budget)].map(budgetPercent).filter((p): p is number => p !== undefined);
+  return all.length ? Math.max(...all) : undefined;
+}
+
 export function expiryText(info: KeyInfo, now = Date.now()): string | undefined {
   if (!info.expires || Number.isNaN(Date.parse(info.expires))) return undefined;
   const ms = Date.parse(info.expires) - now;
@@ -92,7 +131,7 @@ export function expiryText(info: KeyInfo, now = Date.now()): string | undefined 
   return days === 1 ? "1 day left" : `${days} days left`;
 }
 
-export function budgetPercent(info: KeyInfo): number | undefined {
+export function budgetPercent(info: Budget): number | undefined {
   if (info.maxBudget === null || info.maxBudget <= 0) return undefined;
   return (info.spend / info.maxBudget) * 100;
 }
@@ -105,17 +144,8 @@ export function keyWarnings(alias: string, info: KeyInfo, opts: { budgetPercent:
   if (info.blocked || info.status === "revoked") {
     out.push({ kind: "blocked", message: `Key "${alias}" is blocked on the proxy.` });
   }
-  const pct = budgetPercent(info);
-  if (pct !== undefined && pct >= opts.budgetPercent) {
-    const adverb = info.budgetDuration ? ADVERBS[periodName(info.budgetDuration)] : undefined;
-    const which = adverb ? `${adverb} budget` : "budget";
-    const reset = resetText(info, now);
-    const tail = reset ? `; it ${reset}` : "";
-    out.push({
-      kind: "budget",
-      message: `Key "${alias}" has used ${Math.floor(pct)}% of its ${which} (${money(info.spend)} / ${money(info.maxBudget!)})${tail}.`,
-    });
-  }
+  const budget = budgetWarning(`Key "${alias}" has`, "its", info, opts.budgetPercent, now);
+  if (budget) out.push({ kind: "budget", message: budget });
   if (info.expires && !Number.isNaN(Date.parse(info.expires))) {
     const ms = Date.parse(info.expires) - now;
     if (ms <= 0) out.push({ kind: "expiry", message: `Key "${alias}" has expired.` });
@@ -126,4 +156,27 @@ export function keyWarnings(alias: string, info: KeyInfo, opts: { budgetPercent:
     }
   }
   return out;
+}
+
+/** Warnings for user and team budgets near their limit, each with an id to show it once. */
+export function sharedWarnings(shared: SharedBudget[], opts: { budgetPercent: number }, now = Date.now()): Array<{ id: string; message: string }> {
+  const out: Array<{ id: string; message: string }> = [];
+  for (const s of shared) {
+    const message =
+      s.scope === "user"
+        ? budgetWarning("You have", "your", s.budget, opts.budgetPercent, now)
+        : budgetWarning(`Team "${s.name}" has`, "its", s.budget, opts.budgetPercent, now);
+    if (message) out.push({ id: `${s.scope}:${s.name ?? ""}`, message });
+  }
+  return out;
+}
+
+function budgetWarning(subject: string, possessive: string, b: Budget, threshold: number, now: number): string | undefined {
+  const pct = budgetPercent(b);
+  if (pct === undefined || pct < threshold) return undefined;
+  const adverb = b.budgetDuration ? ADVERBS[periodName(b.budgetDuration)] : undefined;
+  const which = adverb ? `${adverb} budget` : "budget";
+  const reset = resetText(b, now);
+  const tail = reset ? `; it ${reset}` : "";
+  return `${subject} used ${Math.floor(pct)}% of ${possessive} ${which} (${money(b.spend)} / ${money(b.maxBudget!)})${tail}.`;
 }

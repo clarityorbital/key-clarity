@@ -2,8 +2,9 @@ import { execFile } from "node:child_process";
 import { chmod, realpath, rm } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { sharedBudgets, type SharedBudget } from "./format";
 import { KeyStore, type HeldKey } from "./keys/keyStore";
-import { LiteLLMClient, ProxyError, type RemoteKey } from "./proxy/client";
+import { LiteLLMClient, ProxyError, type KeyInfo, type OwnerBudgets, type RemoteKey } from "./proxy/client";
 import { fetchKeyStatus, type KeyStatus } from "./proxy/keyStatus";
 import {
   applyClaudeActivation,
@@ -62,6 +63,8 @@ export class Controller implements vscode.Disposable {
   readonly store: KeyStore;
   readonly status = new Map<string, KeyStatus>();
   remote: RemoteKey[] = [];
+  /** Budgets of the account key's user and teams, when the proxy shares them. */
+  owner: OwnerBudgets | undefined;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
@@ -90,24 +93,42 @@ export class Controller implements vscode.Disposable {
     return new LiteLLMClient(url);
   }
 
-  /** The key used to list and create keys: the account key if set, else the Claude or Codex key, else the first key. */
+  /**
+   * The key used to read spend, list keys and create keys: the account key if set, else the first
+   * held key the proxy lets read key info, trying the Claude and Codex keys first. Keys limited to
+   * model calls can't, so picking one of them would hide spend and other keys.
+   */
   async accountKey(): Promise<string | undefined> {
     const explicit = await this.store.getAccountKey();
     if (explicit) return explicit;
     const keys = await this.store.list();
     const preferred = [this.managed("claude")?.hash, this.managed("codex")?.hash];
-    for (const hash of preferred) {
-      const k = keys.find((x) => x.hash === hash);
-      if (k) return k.secret;
+    const rank = (hash: string) => {
+      const i = preferred.indexOf(hash);
+      return i === -1 ? preferred.length : i;
+    };
+    const ordered = [...keys].sort((a, b) => rank(a.hash) - rank(b.hash));
+    if (this.proxyUrl()) {
+      const client = this.client();
+      for (const k of ordered) {
+        try {
+          await client.keyInfo(k.secret);
+          return k.secret;
+        } catch (err) {
+          // Unreachable proxy: trying the other keys would only wait out more timeouts.
+          if (err instanceof ProxyError && err.status === null) break;
+        }
+      }
     }
-    return keys[0]?.secret;
+    return ordered[0]?.secret;
   }
 
-  /** Refreshes spend and budget for every held key, then the list of the user's other keys on the proxy. */
+  /** Refreshes spend and budget for every held key, the user and team budgets, then the user's other keys on the proxy. */
   async refresh(): Promise<void> {
     if (!this.proxyUrl()) {
       this.status.clear();
       this.remote = [];
+      this.owner = undefined;
       this.fireChanged();
       return;
     }
@@ -118,14 +139,18 @@ export class Controller implements vscode.Disposable {
     for (const hash of [...this.status.keys()]) {
       if (!keys.some((k) => k.hash === hash)) this.status.delete(hash);
     }
-    this.remote = await this.fetchRemote(client, keys).catch(() => []);
+    this.owner = account ? await client.ownerBudgets(account).catch(() => undefined) : undefined;
+    this.remote = account ? await this.fetchRemote(client, account, keys).catch(() => []) : [];
     this.fireChanged();
   }
 
-  private async fetchRemote(client: LiteLLMClient, held: HeldKey[]): Promise<RemoteKey[]> {
-    const account = await this.accountKey();
-    if (!account) return [];
-    const userId = (await client.keyInfo(account)).userId;
+  /** User and team budgets that also limit a key. */
+  sharedBudgets(info: KeyInfo): SharedBudget[] {
+    return sharedBudgets(info, this.owner);
+  }
+
+  private async fetchRemote(client: LiteLLMClient, account: string, held: HeldKey[]): Promise<RemoteKey[]> {
+    const userId = this.owner?.userId ?? (await client.keyInfo(account)).userId;
     if (!userId) return [];
     const heldHashes = new Set(held.map((k) => k.hash));
     return (await client.listKeys(account, userId)).filter((k) => !heldHashes.has(k.hash));

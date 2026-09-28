@@ -67,6 +67,24 @@ describe("LiteLLMClient", () => {
     expect(await client.keyInfo(total)).toMatchObject({ maxBudget: 500, budgetDuration: null, budgetResetAt: null });
   });
 
+  it("reads the user's and teams' budgets", async () => {
+    const secret = proxy.seed("owner", "user-7", { team_id: "team-a" });
+    proxy.users.set("user-7", { spend: 150, max_budget: 200, budget_duration: "1mo", budget_reset_at: "2026-10-01T00:00:00Z" });
+    proxy.teams.set("team-a", { team_alias: "research", members: ["user-7"], spend: 900, max_budget: 1000, budget_duration: null });
+    proxy.teams.set("team-b", { team_alias: "other", members: ["user-8"], spend: 0, max_budget: 5 });
+    expect(await client.keyInfo(secret)).toMatchObject({ userId: "user-7", teamId: "team-a" });
+    expect(await client.ownerBudgets(secret)).toEqual({
+      userId: "user-7",
+      user: { spend: 150, maxBudget: 200, budgetDuration: "1mo", budgetResetAt: "2026-10-01T00:00:00Z" },
+      teams: [{ id: "team-a", alias: "research", spend: 900, maxBudget: 1000, budgetDuration: null, budgetResetAt: null }],
+    });
+  });
+
+  it("reads a user without a budget row", async () => {
+    const secret = proxy.seed("no-user-row", "user-9");
+    expect(await client.ownerBudgets(secret)).toEqual({ userId: "user-9", user: null, teams: [] });
+  });
+
   it("lists the user's keys with hashes that match sha256 of the secret", async () => {
     const secret = proxy.seed("beta", "user-2");
     proxy.seed("gamma", "user-2");

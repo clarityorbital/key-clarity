@@ -212,6 +212,26 @@ export async function run(): Promise<void> {
       await controller.deactivateCodex();
     });
 
+    await step("reads spend, other keys and the user's budget when the key in use is limited to model calls", async () => {
+      const cappedSecret = proxy.seed("capped-only", "user-1", { allowed_routes: ["llm_api_routes"], spend: 12.4 });
+      const capped = await controller.store.add(cappedSecret, "capped-only");
+      proxy.users.set("user-1", { spend: 150, max_budget: 200, budget_duration: "1mo", budget_reset_at: resetAt });
+      await controller.activateCodex(capped.hash);
+      await controller.refresh();
+      assert.notEqual(await controller.accountKey(), cappedSecret, "a key that can read key info is used instead");
+      assert.equal(controller.status.get(capped.hash)?.info?.spend, 12.4);
+      assert.deepEqual(controller.remote.map((k) => k.alias), ["gamma-not-held"]);
+      const node = (await tree.getChildren()).find((n) => n.kind === "held" && n.key.alias === "capped-only");
+      assert.ok(node);
+      const item = tree.getTreeItem(node);
+      assert.equal(item.description, "Codex · $12.40 spent · you: $150.00 / $200.00 monthly");
+      const tooltip = (item.tooltip as vscode.MarkdownString).value.replace(/\\/g, "");
+      assert.match(tooltip, /\*\*Your budget\*\*, shared by all your keys/);
+      assert.match(tooltip, /\| Spent this month \| \$150\.00 \(75%\), \$50\.00 left \|/);
+      await controller.deactivateCodex();
+      proxy.users.delete("user-1");
+    });
+
     await step("runs the refresh command without error", async () => {
       await vscode.commands.executeCommand("keyClarity.refresh");
     });

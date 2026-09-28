@@ -18,13 +18,25 @@ interface Row {
   expires: string | null;
   models: string[];
   user_id: string;
+  team_id?: string | null;
   /** `["llm_api_routes"]` limits the key to model calls, as many proxies configure. */
   allowed_routes: string[];
+}
+
+interface BudgetRow {
+  spend: number;
+  max_budget: number | null;
+  budget_duration?: string | null;
+  budget_reset_at?: string | null;
 }
 
 export interface MockProxy {
   url: string;
   rows: Map<string, Row>;
+  /** User budgets by user id, returned by `/user/info`. */
+  users: Map<string, BudgetRow>;
+  /** Teams by id, with the user ids of their members. */
+  teams: Map<string, BudgetRow & { team_alias: string; members: string[] }>;
   models: string[];
   /** Adds a key owned by `userId` and returns its secret. */
   seed(alias: string, userId?: string, extra?: Partial<Row>): string;
@@ -37,6 +49,8 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export async function startMockProxy(): Promise<MockProxy> {
   const rows = new Map<string, Row>();
+  const users: MockProxy["users"] = new Map();
+  const teams: MockProxy["teams"] = new Map();
   const requests: MockProxy["requests"] = [];
   const models = ["claude-sonnet-5", "gpt-5.6-terra", "gpt-6-sol"];
 
@@ -82,7 +96,7 @@ export async function startMockProxy(): Promise<MockProxy> {
     const caller = auth ? rows.get(sha(auth)) : undefined;
     if (!caller) return send(401, { error: { message: "Authentication Error, Invalid proxy server token passed.", code: "401" } });
 
-    if (caller.allowed_routes.includes("llm_api_routes") && url.pathname.startsWith("/key/")) {
+    if (caller.allowed_routes.includes("llm_api_routes") && !url.pathname.startsWith("/v1/")) {
       return send(403, {
         error: { message: "Virtual key is not allowed to call this route. Only allowed to call routes: ['llm_api_routes']", code: "403" },
       });
@@ -93,6 +107,11 @@ export async function startMockProxy(): Promise<MockProxy> {
       if (!row || row.user_id !== caller.user_id) return send(404, { detail: { error: "Key not found" } });
       const { token, ...info } = row;
       return send(200, { key: wanted ?? auth, info: { ...info, status: "active" } });
+    }
+    if (req.method === "GET" && url.pathname === "/user/info") {
+      const userId = caller.user_id;
+      const memberOf = [...teams].filter(([, t]) => t.members.includes(userId)).map(([team_id, { members, ...t }]) => ({ team_id, ...t }));
+      return send(200, { user_id: userId, user_info: users.get(userId) ?? null, keys: [], teams: memberOf });
     }
     if (req.method === "GET" && url.pathname === "/key/list") {
       const userId = url.searchParams.get("user_id");
@@ -139,6 +158,8 @@ export async function startMockProxy(): Promise<MockProxy> {
   return {
     url: `http://127.0.0.1:${port}`,
     rows,
+    users,
+    teams,
     models,
     seed,
     requests,

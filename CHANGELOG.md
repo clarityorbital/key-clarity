@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- User and team budgets. When your LiteLLM user or team has a budget, such as $200 a month across all your keys, a key's hover shows it with spend this period, the amount left and the reset date. A key with no budget of its own shows it in the list too: `$12.40 spent · you: $150.00 / $200.00 monthly`. You're warned when a user or team budget is nearly used up.
+- Fixed spend and **Other keys on the proxy** sometimes going missing. Without an account key, Key Clarity used the key active for Claude Code or Codex to read from the proxy, even when that key was limited to model calls and couldn't. It now uses the first of your keys the proxy lets read key info.
+
 ## 0.3.0
 
 - Monthly budgets. A key whose budget resets on a schedule (LiteLLM's `budget_duration`) now shows as `$12.40 / $200.00 monthly`. Hovering it shows the budget per period, spend this period with the amount left, and when it resets. Total budgets show as `$500.00 total`.

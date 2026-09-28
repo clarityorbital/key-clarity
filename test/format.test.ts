@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { budgetRows, budgetText, expiryText, keyWarnings, money, periodName, resetText } from "../src/format";
-import type { KeyInfo } from "../src/proxy/client";
+import {
+  budgetRows,
+  budgetText,
+  expiryText,
+  highestPercent,
+  keyWarnings,
+  money,
+  periodName,
+  resetText,
+  sharedBudgets,
+  sharedWarnings,
+  spendSummary,
+} from "../src/format";
+import type { KeyInfo, OwnerBudgets } from "../src/proxy/client";
 
 const now = Date.parse("2026-09-26T12:00:00Z");
 const info = (over: Partial<KeyInfo> = {}): KeyInfo => ({
@@ -12,6 +24,7 @@ const info = (over: Partial<KeyInfo> = {}): KeyInfo => ({
   expires: null,
   models: [],
   userId: null,
+  teamId: null,
   blocked: false,
   status: null,
   ...over,
@@ -95,5 +108,41 @@ describe("keyWarnings", () => {
   it("names the period and reset in a periodic budget warning", () => {
     const w = keyWarnings("proj", info({ spend: 190, maxBudget: 200, budgetDuration: "1mo", budgetResetAt: "2026-10-01T00:00:00Z" }), opts, now);
     expect(w[0].message).toBe(`Key "proj" has used 95% of its monthly budget ($190.00 / $200.00); it resets in 4 days.`);
+  });
+});
+
+describe("user and team budgets", () => {
+  const budget = { spend: 150, maxBudget: 200, budgetDuration: "1mo", budgetResetAt: "2026-10-01T00:00:00Z" };
+  const owner: OwnerBudgets = {
+    userId: "u1",
+    user: budget,
+    teams: [
+      { id: "t1", alias: "research", spend: 950, maxBudget: 1000, budgetDuration: null, budgetResetAt: null },
+      { id: "t2", alias: "unlimited", spend: 5, maxBudget: null, budgetDuration: null, budgetResetAt: null },
+    ],
+  };
+
+  it("applies the user's budget to the user's keys, and the team's to the team's keys", () => {
+    expect(sharedBudgets(info({ userId: "u1", teamId: "t1" }), owner).map((s) => s.scope)).toEqual(["user", "team"]);
+    expect(sharedBudgets(info({ userId: "someone-else" }), owner)).toEqual([]);
+    // Budgets without a limit aren't worth showing.
+    expect(sharedBudgets(info({ userId: "u2", teamId: "t2" }), owner)).toEqual([]);
+    expect(sharedBudgets(info({ userId: "u1" }), undefined)).toEqual([]);
+  });
+
+  it("shows the user's budget when the key has none of its own", () => {
+    const key = info({ spend: 12.4, userId: "u1" });
+    const shared = sharedBudgets(key, owner);
+    expect(spendSummary(key, shared)).toBe("$12.40 spent · you: $150.00 / $200.00 monthly");
+    expect(spendSummary(info({ spend: 12.4, maxBudget: 50, userId: "u1" }), shared)).toBe("$12.40 / $50.00");
+    expect(highestPercent(key, shared)).toBe(75);
+  });
+
+  it("warns once per shared budget near its limit", () => {
+    const shared = sharedBudgets(info({ userId: "u1", teamId: "t1" }), { ...owner, user: { ...budget, spend: 190 } });
+    expect(sharedWarnings(shared, { budgetPercent: 90 }, now)).toEqual([
+      { id: "user:", message: "You have used 95% of your monthly budget ($190.00 / $200.00); it resets in 4 days." },
+      { id: "team:research", message: `Team "research" has used 95% of its budget ($950.00 / $1000.00).` },
+    ]);
   });
 });

@@ -1,19 +1,36 @@
 // Minimal client for the LiteLLM proxy's key-management and model endpoints.
 // Kept free of `vscode` imports so it can be unit-tested against a mock server.
 
-export interface KeyInfo {
-  alias: string | null;
+/** A spend limit, on a key, a user or a team. */
+export interface Budget {
   /** Spend in the current budget period; LiteLLM resets it to 0 when the period ends. */
   spend: number;
   maxBudget: number | null;
   /** How often the budget resets, such as `1mo` or `30d`. Null for a total budget that never resets. */
   budgetDuration: string | null;
   budgetResetAt: string | null;
+}
+
+export interface KeyInfo extends Budget {
+  alias: string | null;
   expires: string | null;
   models: string[];
   userId: string | null;
+  teamId: string | null;
   blocked: boolean;
   status: string | null;
+}
+
+export interface TeamBudget extends Budget {
+  id: string;
+  alias: string | null;
+}
+
+/** Budgets that apply to every key of a user: the user's own, and those of the user's teams. */
+export interface OwnerBudgets {
+  userId: string | null;
+  user: Budget | null;
+  teams: TeamBudget[];
 }
 
 export interface RemoteKey extends KeyInfo {
@@ -111,6 +128,19 @@ export class LiteLLMClient {
     return parseKeyInfo(asRecord(asRecord(body).info));
   }
 
+  /** The budgets of the key's user and that user's teams. Needs a key allowed to call `/user/info`. */
+  async ownerBudgets(authKey: string): Promise<OwnerBudgets> {
+    const body = asRecord(await this.request("GET", "/user/info", authKey));
+    const user = body.user_info && typeof body.user_info === "object" ? parseBudget(asRecord(body.user_info)) : null;
+    const teams: TeamBudget[] = [];
+    for (const item of Array.isArray(body.teams) ? body.teams : []) {
+      const row = asRecord(item);
+      if (typeof row.team_id !== "string") continue;
+      teams.push({ ...parseBudget(row), id: row.team_id, alias: typeof row.team_alias === "string" ? row.team_alias : null });
+    }
+    return { userId: typeof body.user_id === "string" ? body.user_id : null, user, teams };
+  }
+
   async listKeys(authKey: string, userId: string | null): Promise<RemoteKey[]> {
     const keys: RemoteKey[] = [];
     for (let page = 1; page <= 20; page++) {
@@ -204,22 +234,33 @@ export class LiteLLMClient {
   }
 }
 
+const num = (v: unknown) => (typeof v === "number" ? v : null);
+const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+
+function parseBudget(row: Record<string, unknown>): Budget {
+  return {
+    spend: num(row.spend) ?? 0,
+    maxBudget: num(row.max_budget),
+    budgetDuration: str(row.budget_duration),
+    budgetResetAt: str(row.budget_reset_at),
+  };
+}
+
 function parseKeyInfo(row: Record<string, unknown>): KeyInfo {
   // A key linked to a budget tier takes the tier's limit and period wherever it has none of its own,
   // the same way the proxy enforces them.
   const tier = asRecord(row.litellm_budget_table);
-  const num = (v: unknown) => (typeof v === "number" ? v : null);
-  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
-  const ownDuration = str(row.budget_duration);
+  const own = parseBudget(row);
   return {
+    spend: own.spend,
+    maxBudget: own.maxBudget ?? num(tier.max_budget),
+    budgetDuration: own.budgetDuration ?? str(tier.budget_duration),
+    budgetResetAt: own.budgetDuration ? own.budgetResetAt : (str(tier.budget_reset_at) ?? own.budgetResetAt),
     alias: typeof row.key_alias === "string" ? row.key_alias : null,
-    spend: typeof row.spend === "number" ? row.spend : 0,
-    maxBudget: num(row.max_budget) ?? num(tier.max_budget),
-    budgetDuration: ownDuration ?? str(tier.budget_duration),
-    budgetResetAt: ownDuration ? str(row.budget_reset_at) : (str(tier.budget_reset_at) ?? str(row.budget_reset_at)),
     expires: typeof row.expires === "string" ? row.expires : null,
     models: Array.isArray(row.models) ? row.models.filter((m): m is string => typeof m === "string") : [],
-    userId: typeof row.user_id === "string" ? row.user_id : null,
+    userId: str(row.user_id),
+    teamId: str(row.team_id),
     blocked: row.blocked === true,
     status: typeof row.status === "string" ? row.status : null,
   };

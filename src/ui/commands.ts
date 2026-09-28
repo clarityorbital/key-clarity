@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { describeError, type Controller } from "../controller";
-import { budgetText } from "../format";
+import { spendSummary } from "../format";
 import type { HeldKey } from "../keys/keyStore";
 import { isForbidden, isInsecureRemote, LiteLLMClient, normalizeBaseUrl, ProxyError } from "../proxy/client";
 import { claudeUserSettingsPath, claudeWorkspaceSettingsPath } from "../targets/claude";
@@ -38,7 +38,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
         const active = controller.activeLabels(key.hash);
         return {
           label: key.alias,
-          description: [active.length ? `in use: ${active.join(", ")}` : "", info ? budgetText(info) : ""].filter(Boolean).join(" · "),
+          description: [active.length ? `in use: ${active.join(", ")}` : "", info ? spendSummary(info, controller.sharedBudgets(info)) : ""].filter(Boolean).join(" · "),
           key,
         };
       }),
