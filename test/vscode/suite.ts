@@ -212,10 +212,17 @@ export async function run(): Promise<void> {
       await controller.deactivateCodex();
     });
 
-    await step("reads spend, other keys and the user's budget when the key in use is limited to model calls", async () => {
-      const cappedSecret = proxy.seed("capped-only", "user-1", { allowed_routes: ["llm_api_routes"], spend: 12.4 });
+    await step("reads spend, other keys and the monthly member budget when the key in use is limited to model calls", async () => {
+      const cappedSecret = proxy.seed("capped-only", "user-1", { allowed_routes: ["llm_api_routes"], spend: 12.4, team_id: "team-r" });
       const capped = await controller.store.add(cappedSecret, "capped-only");
-      proxy.users.set("user-1", { spend: 150, max_budget: 200, budget_duration: "1mo", budget_reset_at: resetAt });
+      // A team with a total budget, where each member also has a monthly budget.
+      proxy.teams.set("team-r", {
+        team_alias: "research",
+        members: ["user-1"],
+        spend: 900,
+        max_budget: 5000,
+        member_budgets: { "user-1": { spend: 150, max_budget: 200, budget_duration: "1mo", budget_reset_at: resetAt } },
+      });
       await controller.activateCodex(capped.hash);
       await controller.refresh();
       assert.notEqual(await controller.accountKey(), cappedSecret, "a key that can read key info is used instead");
@@ -226,10 +233,13 @@ export async function run(): Promise<void> {
       const item = tree.getTreeItem(node);
       assert.equal(item.description, "Codex · $12.40 spent · you: $150.00 / $200.00 monthly");
       const tooltip = (item.tooltip as vscode.MarkdownString).value.replace(/\\/g, "");
-      assert.match(tooltip, /\*\*Your budget\*\*, shared by all your keys/);
+      assert.match(tooltip, /\*\*Your budget in team research\*\*/);
+      assert.match(tooltip, /\| Budget \| \$200\.00 per month \|/);
       assert.match(tooltip, /\| Spent this month \| \$150\.00 \(75%\), \$50\.00 left \|/);
+      assert.match(tooltip, /\*\*Team budget: research\*\*/);
+      assert.match(tooltip, /\| Budget \| \$5000\.00 total \|/);
       await controller.deactivateCodex();
-      proxy.users.delete("user-1");
+      proxy.teams.delete("team-r");
     });
 
     await step("runs the refresh command without error", async () => {

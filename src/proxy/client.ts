@@ -24,6 +24,8 @@ export interface KeyInfo extends Budget {
 export interface TeamBudget extends Budget {
   id: string;
   alias: string | null;
+  /** The user's own budget within the team (LiteLLM's team member budget), often per month. */
+  member: Budget | null;
 }
 
 /** Budgets that apply to every key of a user: the user's own, and those of the user's teams. */
@@ -128,17 +130,32 @@ export class LiteLLMClient {
     return parseKeyInfo(asRecord(asRecord(body).info));
   }
 
-  /** The budgets of the key's user and that user's teams. Needs a key allowed to call `/user/info`. */
+  /**
+   * The budgets of the key's user and that user's teams, including the user's member budget in each
+   * team. Needs a key allowed to call `/user/info` and `/team/info`.
+   */
   async ownerBudgets(authKey: string): Promise<OwnerBudgets> {
     const body = asRecord(await this.request("GET", "/user/info", authKey));
+    const userId = typeof body.user_id === "string" ? body.user_id : null;
     const user = body.user_info && typeof body.user_info === "object" ? parseBudget(asRecord(body.user_info)) : null;
     const teams: TeamBudget[] = [];
     for (const item of Array.isArray(body.teams) ? body.teams : []) {
       const row = asRecord(item);
       if (typeof row.team_id !== "string") continue;
-      teams.push({ ...parseBudget(row), id: row.team_id, alias: typeof row.team_alias === "string" ? row.team_alias : null });
+      const member = userId ? await this.memberBudget(authKey, row.team_id, userId).catch(() => null) : null;
+      teams.push({ ...parseBudget(row), id: row.team_id, alias: typeof row.team_alias === "string" ? row.team_alias : null, member });
     }
-    return { userId: typeof body.user_id === "string" ? body.user_id : null, user, teams };
+    return { userId, user, teams };
+  }
+
+  /** The user's member budget in a team: the limit and period from the membership's budget, and the member's spend. */
+  private async memberBudget(authKey: string, teamId: string, userId: string): Promise<Budget | null> {
+    const body = asRecord(await this.request("GET", `/team/info?team_id=${encodeURIComponent(teamId)}`, authKey));
+    const memberships = Array.isArray(body.team_memberships) ? body.team_memberships : [];
+    const membership = memberships.map(asRecord).find((m) => m.user_id === userId);
+    if (!membership || !membership.litellm_budget_table) return null;
+    const limits = parseBudget(asRecord(membership.litellm_budget_table));
+    return { ...limits, spend: num(membership.spend) ?? 0 };
   }
 
   async listKeys(authKey: string, userId: string | null): Promise<RemoteKey[]> {

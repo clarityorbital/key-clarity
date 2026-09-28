@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Team member budgets. When your team gives each member their own budget, such as $200 a month on top of the team's total, a key in that team now shows it: `$12.40 spent · you: $150.00 / $200.00 monthly`. The hover lists it under **Your budget in team …**, with spend this month, the amount left and the reset date, above the team's total budget. You're warned when it's nearly used up.
+
 ## 0.3.1
 
 - User and team budgets. When your LiteLLM user or team has a budget, such as $200 a month across all your keys, a key's hover shows it with spend this period, the amount left and the reset date. A key with no budget of its own shows it in the list too: `$12.40 spent · you: $150.00 / $200.00 monthly`. You're warned when a user or team budget is nearly used up.

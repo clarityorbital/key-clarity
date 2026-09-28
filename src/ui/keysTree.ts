@@ -120,7 +120,13 @@ function detailsTable(masked: string, info: KeyInfo, active: string[], shared: S
   if (active.length) rows.push(["In use for", active.join(", ")]);
   const title = info.alias ? `**${escape(info.alias)}**\n\n` : "";
   const sections = shared.map((b) => {
-    const heading = b.scope === "user" ? "**Your budget**, shared by all your keys" : `**Team budget: ${escape(b.name ?? "")}**, shared by the team's keys`;
+    const team = escape(b.name ?? "");
+    const heading =
+      b.scope === "member"
+        ? `**Your budget in team ${team}**, shared by your keys in the team`
+        : b.scope === "user"
+          ? "**Your budget**, shared by all your keys"
+          : `**Team budget: ${team}**, shared by the team's keys`;
     return `\n\n${heading}\n\n${table(escapedBudgetRows(b.budget))}`;
   });
   return title + table(rows) + sections.join("");

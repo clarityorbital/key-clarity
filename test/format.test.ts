@@ -117,8 +117,16 @@ describe("user and team budgets", () => {
     userId: "u1",
     user: budget,
     teams: [
-      { id: "t1", alias: "research", spend: 950, maxBudget: 1000, budgetDuration: null, budgetResetAt: null },
-      { id: "t2", alias: "unlimited", spend: 5, maxBudget: null, budgetDuration: null, budgetResetAt: null },
+      {
+        id: "t1",
+        alias: "research",
+        spend: 950,
+        maxBudget: 1000,
+        budgetDuration: null,
+        budgetResetAt: null,
+        member: null,
+      },
+      { id: "t2", alias: "unlimited", spend: 5, maxBudget: null, budgetDuration: null, budgetResetAt: null, member: null },
     ],
   };
 
@@ -144,5 +152,21 @@ describe("user and team budgets", () => {
       { id: "user:", message: "You have used 95% of your monthly budget ($190.00 / $200.00); it resets in 4 days." },
       { id: "team:research", message: `Team "research" has used 95% of its budget ($950.00 / $1000.00).` },
     ]);
+  });
+
+  it("puts the user's member budget in the key's team first", () => {
+    const member = { spend: 42, maxBudget: 200, budgetDuration: "1mo", budgetResetAt: "2026-10-01T00:00:00Z" };
+    const teamOnly: OwnerBudgets = { userId: "u1", user: null, teams: [{ ...owner.teams[0], member }] };
+    const key = info({ spend: 12.4, userId: "u1", teamId: "t1" });
+    const shared = sharedBudgets(key, teamOnly);
+    expect(shared.map((s) => s.scope)).toEqual(["member", "team"]);
+    expect(spendSummary(key, shared)).toBe("$12.40 spent · you: $42.00 / $200.00 monthly");
+    // Someone else's key in the team isn't limited by this user's member budget.
+    expect(sharedBudgets(info({ userId: "u2", teamId: "t1" }), teamOnly).map((s) => s.scope)).toEqual(["team"]);
+    const warned = sharedWarnings(sharedBudgets(key, { ...teamOnly, teams: [{ ...teamOnly.teams[0], member: { ...member, spend: 190 } }] }), { budgetPercent: 90 }, now);
+    expect(warned[0]).toEqual({
+      id: "member:research",
+      message: `You have used 95% of your monthly budget in team "research" ($190.00 / $200.00); it resets in 4 days.`,
+    });
   });
 });

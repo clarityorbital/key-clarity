@@ -85,26 +85,28 @@ export function budgetRows(info: Budget, now = Date.now()): Array<[string, strin
 
 /** A user or team budget that also limits a key. */
 export interface SharedBudget {
-  scope: "user" | "team";
+  /** `member` is the user's own budget within a team. */
+  scope: "member" | "user" | "team";
   /** The team's alias or id; null for the user. */
   name: string | null;
   budget: Budget;
 }
 
-/** The user and team budgets with a limit that apply to a key, user first. */
+/** The budgets with a limit that apply to a key besides its own: the user's in the key's team, the user's, then the team's. */
 export function sharedBudgets(info: Pick<KeyInfo, "userId" | "teamId">, owner: OwnerBudgets | undefined): SharedBudget[] {
   if (!owner) return [];
   const out: SharedBudget[] = [];
-  if (owner.user && owner.user.maxBudget !== null && info.userId && info.userId === owner.userId) {
-    out.push({ scope: "user", name: null, budget: owner.user });
-  }
+  const mine = !!info.userId && info.userId === owner.userId;
   const team = info.teamId ? owner.teams.find((t) => t.id === info.teamId) : undefined;
-  if (team && team.maxBudget !== null) out.push({ scope: "team", name: team.alias ?? team.id, budget: team });
+  const teamName = team ? (team.alias ?? team.id) : null;
+  if (mine && team?.member && team.member.maxBudget !== null) out.push({ scope: "member", name: teamName, budget: team.member });
+  if (mine && owner.user && owner.user.maxBudget !== null) out.push({ scope: "user", name: null, budget: owner.user });
+  if (team && team.maxBudget !== null) out.push({ scope: "team", name: teamName, budget: team });
   return out;
 }
 
 export function sharedLabel(shared: SharedBudget): string {
-  return shared.scope === "user" ? "you" : `team ${shared.name}`;
+  return shared.scope === "team" ? `team ${shared.name}` : "you";
 }
 
 /**
@@ -163,20 +165,22 @@ export function sharedWarnings(shared: SharedBudget[], opts: { budgetPercent: nu
   const out: Array<{ id: string; message: string }> = [];
   for (const s of shared) {
     const message =
-      s.scope === "user"
-        ? budgetWarning("You have", "your", s.budget, opts.budgetPercent, now)
-        : budgetWarning(`Team "${s.name}" has`, "its", s.budget, opts.budgetPercent, now);
+      s.scope === "member"
+        ? budgetWarning("You have", "your", s.budget, opts.budgetPercent, now, ` in team "${s.name}"`)
+        : s.scope === "user"
+          ? budgetWarning("You have", "your", s.budget, opts.budgetPercent, now)
+          : budgetWarning(`Team "${s.name}" has`, "its", s.budget, opts.budgetPercent, now);
     if (message) out.push({ id: `${s.scope}:${s.name ?? ""}`, message });
   }
   return out;
 }
 
-function budgetWarning(subject: string, possessive: string, b: Budget, threshold: number, now: number): string | undefined {
+function budgetWarning(subject: string, possessive: string, b: Budget, threshold: number, now: number, where = ""): string | undefined {
   const pct = budgetPercent(b);
   if (pct === undefined || pct < threshold) return undefined;
   const adverb = b.budgetDuration ? ADVERBS[periodName(b.budgetDuration)] : undefined;
   const which = adverb ? `${adverb} budget` : "budget";
   const reset = resetText(b, now);
   const tail = reset ? `; it ${reset}` : "";
-  return `${subject} used ${Math.floor(pct)}% of ${possessive} ${which} (${money(b.spend)} / ${money(b.maxBudget!)})${tail}.`;
+  return `${subject} used ${Math.floor(pct)}% of ${possessive} ${which}${where} (${money(b.spend)} / ${money(b.maxBudget!)})${tail}.`;
 }

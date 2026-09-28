@@ -35,8 +35,8 @@ export interface MockProxy {
   rows: Map<string, Row>;
   /** User budgets by user id, returned by `/user/info`. */
   users: Map<string, BudgetRow>;
-  /** Teams by id, with the user ids of their members. */
-  teams: Map<string, BudgetRow & { team_alias: string; members: string[] }>;
+  /** Teams by id, with the user ids of their members and any member budgets (LiteLLM's team member budget). */
+  teams: Map<string, BudgetRow & { team_alias: string; members: string[]; member_budgets?: Record<string, BudgetRow> }>;
   models: string[];
   /** Adds a key owned by `userId` and returns its secret. */
   seed(alias: string, userId?: string, extra?: Partial<Row>): string;
@@ -110,8 +110,27 @@ export async function startMockProxy(): Promise<MockProxy> {
     }
     if (req.method === "GET" && url.pathname === "/user/info") {
       const userId = caller.user_id;
-      const memberOf = [...teams].filter(([, t]) => t.members.includes(userId)).map(([team_id, { members, ...t }]) => ({ team_id, ...t }));
+      const memberOf = [...teams]
+        .filter(([, t]) => t.members.includes(userId))
+        .map(([team_id, { members, member_budgets, ...t }]) => ({ team_id, ...t }));
       return send(200, { user_id: userId, user_info: users.get(userId) ?? null, keys: [], teams: memberOf });
+    }
+    if (req.method === "GET" && url.pathname === "/team/info") {
+      const teamId = url.searchParams.get("team_id") ?? "";
+      const team = teams.get(teamId);
+      if (!team) return send(404, { detail: { error: "Team not found" } });
+      if (!team.members.includes(caller.user_id)) return send(403, { detail: { error: "Not a member of this team" } });
+      const { members, member_budgets = {}, ...info } = team;
+      const team_memberships = members.map((user_id) => {
+        const b = member_budgets[user_id];
+        return {
+          user_id,
+          team_id: teamId,
+          spend: b?.spend ?? 0,
+          litellm_budget_table: b ? { max_budget: b.max_budget, budget_duration: b.budget_duration ?? null, budget_reset_at: b.budget_reset_at ?? null } : null,
+        };
+      });
+      return send(200, { team_id: teamId, team_info: { team_id: teamId, ...info }, keys: [], team_memberships });
     }
     if (req.method === "GET" && url.pathname === "/key/list") {
       const userId = url.searchParams.get("user_id");

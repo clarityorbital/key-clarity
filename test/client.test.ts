@@ -70,13 +70,33 @@ describe("LiteLLMClient", () => {
   it("reads the user's and teams' budgets", async () => {
     const secret = proxy.seed("owner", "user-7", { team_id: "team-a" });
     proxy.users.set("user-7", { spend: 150, max_budget: 200, budget_duration: "1mo", budget_reset_at: "2026-10-01T00:00:00Z" });
-    proxy.teams.set("team-a", { team_alias: "research", members: ["user-7"], spend: 900, max_budget: 1000, budget_duration: null });
+    proxy.teams.set("team-a", {
+      team_alias: "research",
+      members: ["user-7", "user-8"],
+      spend: 900,
+      max_budget: 1000,
+      budget_duration: null,
+      member_budgets: {
+        "user-7": { spend: 42, max_budget: 200, budget_duration: "1mo", budget_reset_at: "2026-10-01T00:00:00Z" },
+        "user-8": { spend: 1, max_budget: 5 },
+      },
+    });
     proxy.teams.set("team-b", { team_alias: "other", members: ["user-8"], spend: 0, max_budget: 5 });
     expect(await client.keyInfo(secret)).toMatchObject({ userId: "user-7", teamId: "team-a" });
     expect(await client.ownerBudgets(secret)).toEqual({
       userId: "user-7",
       user: { spend: 150, maxBudget: 200, budgetDuration: "1mo", budgetResetAt: "2026-10-01T00:00:00Z" },
-      teams: [{ id: "team-a", alias: "research", spend: 900, maxBudget: 1000, budgetDuration: null, budgetResetAt: null }],
+      teams: [
+        {
+          id: "team-a",
+          alias: "research",
+          spend: 900,
+          maxBudget: 1000,
+          budgetDuration: null,
+          budgetResetAt: null,
+          member: { spend: 42, maxBudget: 200, budgetDuration: "1mo", budgetResetAt: "2026-10-01T00:00:00Z" },
+        },
+      ],
     });
   });
 
