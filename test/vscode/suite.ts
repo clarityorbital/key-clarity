@@ -50,7 +50,7 @@ export async function run(): Promise<void> {
     await writeFile(claudeSettings, originalClaude);
     await writeFile(codexConfig, originalCodex);
 
-    const ext = vscode.extensions.getExtension<TestApi>("clarityorbital.key-clarity");
+    const ext = vscode.extensions.getExtension<TestApi>("clarity-orbital.key-clarity");
     assert.ok(ext, "extension is installed");
     const api = await ext.activate();
     assert.ok(api, "test API is exposed in test mode");

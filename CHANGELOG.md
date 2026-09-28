@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- The publisher ID is now `clarity-orbital`, matching the Marketplace publisher, so the extension ID is `clarity-orbital.key-clarity`. If you installed an earlier build from a `.vsix`, uninstall `clarityorbital.key-clarity` first. The two IDs keep their stored keys separately.
+
 ## 0.2.0
 
 Security hardening, and preparation for the VS Code Marketplace.
