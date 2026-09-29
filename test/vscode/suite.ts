@@ -125,6 +125,25 @@ export async function run(): Promise<void> {
       assert.equal(await readFile(claudeSettings + ".key-clarity-backup", "utf8"), originalClaude);
       assert.doesNotMatch(JSON.stringify(controller.managed("claude")), /sk-old-direct-key/, "removed credential isn't kept in plain state");
       assert.deepEqual(controller.activeLabels(a), ["Claude"]);
+      const env = (parseJsonc(text) as { env: Record<string, string> }).env;
+      for (const name of ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_TELEMETRY", "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"]) {
+        assert.equal(env[name], "1", `${name} is on by default`);
+      }
+    });
+
+    await step("turns a default flag off and on again from settings", async () => {
+      const config = () => vscode.workspace.getConfiguration("keyClarity");
+      const envNow = async () => (parseJsonc(await readFile(claudeSettings, "utf8")) as { env: Record<string, string> }).env;
+      try {
+        await config().update("claude.disableAdaptiveThinking", false, vscode.ConfigurationTarget.Global);
+        await new Promise((r) => setTimeout(r, 500));
+        assert.equal((await envNow()).CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING, undefined);
+        assert.equal((await envNow()).CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1");
+      } finally {
+        await config().update("claude.disableAdaptiveThinking", undefined, vscode.ConfigurationTarget.Global);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      assert.equal((await envNow()).CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING, "1");
     });
 
     await step("uses key A for Codex", async () => {

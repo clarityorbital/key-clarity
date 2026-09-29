@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyClaudeActivation,
+  DEFAULT_ENV_FLAGS,
   findClaudeConflicts,
   helperCommand,
   isManagedHelper,
@@ -86,6 +87,63 @@ describe("applyClaudeActivation", () => {
   it("skips the TTL variable when set to 0", () => {
     const { text } = applyClaudeActivation(undefined, { ...activation, helperTtlMs: 0 });
     expect(JSON.parse(text).env).toEqual({ ANTHROPIC_BASE_URL: "https://llm.example.com" });
+  });
+});
+
+describe("default env flags", () => {
+  const allFlags = DEFAULT_ENV_FLAGS.map((f) => f.env);
+  const withFlags = { ...activation, flags: allFlags };
+
+  it("sets each switched-on flag to 1 and removes them all on undo", () => {
+    const { text, previous } = applyClaudeActivation(existing, withFlags);
+    expect(JSON.parse(text.replace(/^\s*\/\/.*$/m, "")).env).toEqual({
+      FOO: "bar",
+      ANTHROPIC_BASE_URL: "https://llm.example.com",
+      CLAUDE_CODE_API_KEY_HELPER_TTL_MS: "60000",
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      DISABLE_TELEMETRY: "1",
+      CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1",
+      CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING: "1",
+    });
+    expect(restoreClaude(text, previous)).toBe(existing);
+  });
+
+  it("puts a flag back when its switch is turned off", () => {
+    const mine = existing.replace(`"FOO": "bar"`, `"FOO": "bar",\n        "DISABLE_TELEMETRY": "true"`);
+    const first = applyClaudeActivation(mine, withFlags);
+    expect(first.previous["env.DISABLE_TELEMETRY"]).toEqual({ existed: true, value: "true" });
+
+    const fewer = allFlags.filter((f) => f !== "DISABLE_TELEMETRY" && f !== "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING");
+    const second = applyClaudeActivation(first.text, { ...activation, flags: fewer }, first.previous);
+    expect(second.released.sort()).toEqual(["env.CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING", "env.DISABLE_TELEMETRY"]);
+    const env = JSON.parse(second.text.replace(/^\s*\/\/.*$/m, "")).env;
+    expect(env.DISABLE_TELEMETRY).toBe("true");
+    expect(env).not.toHaveProperty("CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING");
+    expect(env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC).toBe("1");
+
+    // Turning a switch back on records the user's value again, and a full undo still returns to it.
+    const record = Object.fromEntries(Object.entries(first.previous).filter(([k]) => !second.released.includes(k)));
+    const third = applyClaudeActivation(second.text, withFlags, record);
+    expect(third.released).toEqual([]);
+    const merged = mergePrevious(record, third.previous);
+    expect(restoreClaude(third.text, merged)).toBe(mine);
+  });
+
+  it("leaves a flag the user already had alone", () => {
+    const mine = existing.replace(`"FOO": "bar"`, `"FOO": "bar",\n        "DISABLE_TELEMETRY": "1"`);
+    const first = applyClaudeActivation(mine, withFlags);
+    expect(first.previous).not.toHaveProperty("env.DISABLE_TELEMETRY");
+    const second = applyClaudeActivation(first.text, activation, first.previous);
+    expect(second.released).not.toContain("env.DISABLE_TELEMETRY");
+    expect(JSON.parse(second.text.replace(/^\s*\/\/.*$/m, "")).env.DISABLE_TELEMETRY).toBe("1");
+  });
+
+  it("releases the TTL variable when it's set to 0, but never a removed credential", () => {
+    const first = applyClaudeActivation(undefined, activation);
+    const earlier = { ...first.previous, "env.ANTHROPIC_API_KEY": { existed: true, inSecretStorage: true } };
+    const second = applyClaudeActivation(first.text, { ...activation, helperTtlMs: 0 }, earlier);
+    expect(second.released).toEqual(["env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS"]);
+    expect(JSON.parse(second.text).env).toEqual({ ANTHROPIC_BASE_URL: "https://llm.example.com" });
   });
 });
 

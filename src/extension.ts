@@ -77,6 +77,12 @@ export function activate(ctx: vscode.ExtensionContext): TestApi | undefined {
           void vscode.window.showErrorMessage(`Key Clarity: couldn't update Claude Code or Codex for the new proxy URL: ${err instanceof Error ? err.message : err}`);
         }
         refreshQuietly();
+      } else if (e.affectsConfiguration("keyClarity.claude")) {
+        try {
+          await controller.reapplyActive();
+        } catch (err) {
+          void vscode.window.showErrorMessage(`Key Clarity: couldn't update Claude Code settings: ${err instanceof Error ? err.message : err}`);
+        }
       }
       if (e.affectsConfiguration("keyClarity.refreshIntervalMinutes")) schedule();
       if (e.affectsConfiguration("keyClarity.terminal.exportVariables")) void controller.updateTerminalEnv();

@@ -10,6 +10,7 @@ import {
   applyClaudeActivation,
   claudeUserSettingsPath,
   claudeWorkspaceSettingsPath,
+  DEFAULT_ENV_FLAGS,
   findClaudeConflicts,
   mergePrevious,
   OUTRANKING_ENV,
@@ -265,14 +266,21 @@ export class Controller implements vscode.Disposable {
       removed = Object.fromEntries(names.map((n) => [`env.${n}`, { existed: true, inSecretStorage: true }]));
       text = removeEnvVars(text, names);
     }
-    const ttl = vscode.workspace.getConfiguration("keyClarity").get<number>("claude.helperTtlMs") ?? 60000;
-    const result = applyClaudeActivation(text, { baseUrl: this.client().baseUrl, keyFilePath: keyFile, alias: key.alias, helperTtlMs: ttl });
+    const config = vscode.workspace.getConfiguration("keyClarity");
+    const ttl = config.get<number>("claude.helperTtlMs") ?? 60000;
+    const flags = DEFAULT_ENV_FLAGS.filter((f) => config.get<boolean>(`claude.${f.setting}`) ?? true).map((f) => f.env);
+    const result = applyClaudeActivation(
+      text,
+      { baseUrl: this.client().baseUrl, keyFilePath: keyFile, alias: key.alias, helperTtlMs: ttl, flags },
+      earlier?.previous,
+    );
     if (result.text !== before) {
       await this.backup(file, backupPath);
       await atomicWrite(file, result.text);
     }
+    const kept = Object.fromEntries(Object.entries(earlier?.previous ?? {}).filter(([k]) => !result.released.includes(k)));
     return {
-      previous: mergePrevious(earlier?.previous, { ...removed, ...result.previous }),
+      previous: mergePrevious(kept, { ...removed, ...result.previous }),
       createdFile: earlier ? earlier.createdFile : before === undefined,
     };
   }

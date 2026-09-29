@@ -17,12 +17,29 @@ export const OUTRANKING_ENV = [
   "CLAUDE_CODE_USE_FOUNDRY",
 ] as const;
 
+/**
+ * Privacy and gateway-compatibility variables Key Clarity sets by default, each behind its own
+ * `keyClarity.claude.<setting>` switch. When a switch is off, Key Clarity leaves the variable
+ * alone. It never writes "0", because Claude Code treats any value of some of these as "on".
+ */
+export const DEFAULT_ENV_FLAGS = [
+  { setting: "disableNonessentialTraffic", env: "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" },
+  { setting: "disableTelemetry", env: "DISABLE_TELEMETRY" },
+  { setting: "disableExperimentalBetas", env: "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS" },
+  { setting: "disableAdaptiveThinking", env: "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING" },
+] as const;
+
+/** Variables Key Clarity writes only when a setting asks for them, and puts back when it no longer does. */
+export const OPTIONAL_ENV: readonly string[] = [TTL_VAR, ...DEFAULT_ENV_FLAGS.map((f) => f.env)];
+
 export interface ClaudeActivation {
   baseUrl: string;
   keyFilePath: string;
   alias: string;
   /** Written as CLAUDE_CODE_API_KEY_HELPER_TTL_MS when > 0. */
   helperTtlMs: number;
+  /** Variables from DEFAULT_ENV_FLAGS to set to "1". */
+  flags?: readonly string[];
   platform?: NodeJS.Platform;
 }
 
@@ -90,6 +107,7 @@ function managedPaths(a: ClaudeActivation): Array<[JSONPath, unknown]> {
     [["apiKeyHelper"], helperCommand(a.keyFilePath, a.alias, a.platform)],
   ];
   if (a.helperTtlMs > 0) entries.push([["env", TTL_VAR], String(a.helperTtlMs)]);
+  for (const name of a.flags ?? []) entries.push([["env", name], "1"]);
   return entries;
 }
 
@@ -132,12 +150,29 @@ function detectIndent(text: string): string {
 /**
  * Points Claude Code at the proxy and the key file. `previous` holds, for each path this
  * call changed, the value it had before, so the change can be undone later.
+ *
+ * `earlier` is what previous activations recorded. Optional variables it covers that this
+ * activation no longer sets (a switch turned off, or the TTL set to 0) are put back to their
+ * recorded value and listed in `released`, so the caller can drop them from its record.
  */
-export function applyClaudeActivation(text: string | undefined, a: ClaudeActivation): { text: string; previous: PreviousValues } {
+export function applyClaudeActivation(
+  text: string | undefined,
+  a: ClaudeActivation,
+  earlier: PreviousValues = {},
+): { text: string; previous: PreviousValues; released: string[] } {
   let out = text && text.trim() ? text : "{}\n";
   const current = parseSettings(out);
   if (current.env !== undefined && (typeof current.env !== "object" || current.env === null || Array.isArray(current.env))) {
     throw new ConfigEditError(`"env" in the settings file isn't an object.`);
+  }
+  const wanted = new Set(managedPaths(a).map(([p]) => p.join(".")));
+  const released: string[] = [];
+  for (const name of OPTIONAL_ENV) {
+    const dotted = `env.${name}`;
+    const prev = earlier[dotted];
+    if (!prev || prev.inSecretStorage || wanted.has(dotted)) continue;
+    out = setPath(out, ["env", name], prev.existed ? prev.value : undefined);
+    released.push(dotted);
   }
   const previous: PreviousValues = {};
   if (current.env === undefined) previous[ENV_BLOCK] = { existed: false };
@@ -153,7 +188,7 @@ export function applyClaudeActivation(text: string | undefined, a: ClaudeActivat
   for (const [p, value] of managedPaths(a)) {
     if (getPath(after, p) !== value) throw new ConfigEditError(`Could not set ${p.join(".")} in the settings file.`);
   }
-  return { text: out, previous };
+  return { text: out, previous, released };
 }
 
 /** Restores the recorded values; paths recorded as absent are removed. */

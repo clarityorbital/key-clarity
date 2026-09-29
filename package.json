@@ -2,7 +2,7 @@
   "name": "key-clarity",
   "displayName": "Key Clarity",
   "description": "Switch Claude Code and Codex between your LiteLLM virtual keys in one click, with spend, budget and expiry at a glance.",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "publisher": "clarity-orbital",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -340,6 +340,30 @@
           "default": 60000,
           "minimum": 0,
           "markdownDescription": "How often Claude Code re-reads the active key (written as `CLAUDE_CODE_API_KEY_HELPER_TTL_MS`). Set to 0 to leave Claude Code's default of five minutes."
+        },
+        "keyClarity.claude.disableNonessentialTraffic": {
+          "scope": "machine",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` for Claude Code, so it only talks to your proxy: no telemetry, error reporting, auto-updates, release notes or feedback. Update Claude Code yourself while this is on. Turn it off to leave the variable as it was before Key Clarity."
+        },
+        "keyClarity.claude.disableTelemetry": {
+          "scope": "machine",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Set `DISABLE_TELEMETRY=1` for Claude Code. Also covered by `#keyClarity.claude.disableNonessentialTraffic#`; kept separate so telemetry stays off if you turn that one off."
+        },
+        "keyClarity.claude.disableExperimentalBetas": {
+          "scope": "machine",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Set `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`, so Claude Code doesn't send pre-release `anthropic-beta` headers and fields that some proxies reject. MCP tool search is also turned off, so every MCP tool loads up front."
+        },
+        "keyClarity.claude.disableAdaptiveThinking": {
+          "scope": "machine",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Set `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1`, so Opus 4.6 and Sonnet 4.6 use a fixed thinking budget. For proxies whose upstream rejects adaptive thinking. Newer models ignore it."
         },
         "keyClarity.codex.providerId": {
           "scope": "machine",

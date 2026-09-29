@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Claude Code defaults. Setting up Claude Code now also turns on `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` and `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING`, so Claude Code only talks to your proxy and doesn't send features some proxies reject. Each has its own `keyClarity.claude.*` setting, on by default. Turning one off puts the variable back the way it was before Key Clarity. Keys already in use pick the defaults up when VS Code starts.
+- Changing `keyClarity.claude.helperTtlMs` now applies to the key in use right away, and setting it to `0` removes the variable Key Clarity wrote. Before, the old value stayed until you stopped managing Claude Code.
+
 ## 0.3.3
 
 - Budget windows. LiteLLM 1.93 lets a key have several budgets that each reset on their own schedule, such as $200 a month and $20 a day (**Budget Windows** when generating a key). Key Clarity now shows them: the list shows the window closest to its limit, such as `$42.00 / $200.00 monthly`, and the hover shows each window's limit, spend in the current window, amount left and reset date, plus the key's all-time spend. You're warned when a window is nearly used up.

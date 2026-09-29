@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { applyClaudeActivation } from "../../src/targets/claude";
+import { applyClaudeActivation, DEFAULT_ENV_FLAGS } from "../../src/targets/claude";
 import { applyCodexActivation } from "../../src/targets/codex";
 import { writeKeyFile } from "../../src/targets/keyFiles";
 import { startMockProxy, type MockProxy } from "../mockProxy";
@@ -69,7 +69,9 @@ describe.skipIf(!has("claude"))("Claude Code CLI", () => {
     const keyA = proxy.seed("alpha");
     const keyB = proxy.seed("beta");
     const run = async (secret: string, alias: string) => {
-      const { text } = applyClaudeActivation(undefined, { baseUrl: proxy.url, keyFilePath: keyFile, alias, helperTtlMs: 60000 });
+      // With the default flags on, as Key Clarity writes them out of the box.
+      const flags = DEFAULT_ENV_FLAGS.map((f) => f.env);
+      const { text } = applyClaudeActivation(undefined, { baseUrl: proxy.url, keyFilePath: keyFile, alias, helperTtlMs: 60000, flags });
       await writeFile(settingsFile, text);
       await writeKeyFile(keyFile, secret);
       return firstModelRequest("claude", ["-p", "say hi", "--max-turns", "1"], env, home, "/v1/messages");

@@ -40,7 +40,7 @@ Key Clarity never writes a key into Claude Code or Codex config. Each tool inste
 
 | Tool | What Key Clarity writes | How the key is read |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json`: `env.ANTHROPIC_BASE_URL`, `apiKeyHelper`, `env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS` | `apiKeyHelper` runs `cat ~/.key-clarity/claude.key` |
+| Claude Code | `~/.claude/settings.json`: `env.ANTHROPIC_BASE_URL`, `apiKeyHelper`, `env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS`, and the [default flags](#claude-code-defaults) | `apiKeyHelper` runs `cat ~/.key-clarity/claude.key` |
 | Claude Code, one workspace | `<workspace>/.claude/settings.local.json`, same keys | `cat ~/.key-clarity/workspaces/<name>-<id>.key` |
 | Codex | `~/.codex/config.toml`: `[model_providers.key-clarity]` plus root `model_provider` (and `model`, if you pick one) | `[model_providers.key-clarity.auth]` runs `cat ~/.key-clarity/codex.key` |
 
@@ -49,6 +49,19 @@ Key Clarity never writes a key into Claude Code or Codex config. Each tool inste
 - **Backups and undo.** Before its first change to a file, Key Clarity saves a copy next to it as `*.key-clarity-backup`. It also records the values it replaced and restores them when you stop managing that tool.
 - **Conflicting credentials.** Claude Code uses `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and cloud-provider settings before `apiKeyHelper`. Key Clarity warns if any of these is set, and offers to remove it from `settings.json`. It comes back when you stop managing Claude Code.
 - **Workspace settings stay out of git.** If `.claude/settings.local.json` isn't ignored, Key Clarity offers to add it to `.git/info/exclude`. The file holds your proxy URL, not the key.
+
+### Claude Code defaults
+
+When Key Clarity sets up Claude Code, it also turns on four variables that keep Claude Code's traffic on your proxy and avoid features some proxies reject. Each has its own setting, on by default:
+
+| Setting | Writes | Effect |
+| --- | --- | --- |
+| `keyClarity.claude.disableNonessentialTraffic` | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` | No telemetry, error reporting, auto-updates, release notes or feedback. Update Claude Code yourself (for example with your package manager) while this is on. |
+| `keyClarity.claude.disableTelemetry` | `DISABLE_TELEMETRY=1` | Telemetry off. Already covered by the setting above; kept separate so telemetry stays off if you turn that one off. |
+| `keyClarity.claude.disableExperimentalBetas` | `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` | No pre-release `anthropic-beta` headers or fields. MCP tool search is also off, so every MCP tool loads up front. |
+| `keyClarity.claude.disableAdaptiveThinking` | `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` | Opus 4.6 and Sonnet 4.6 use a fixed thinking budget. Newer models ignore it. |
+
+Turning a setting off puts that variable back the way it was before Key Clarity: removed, or your own value. Key Clarity never writes `0`, because Claude Code treats `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=0` as on. If you set one of these yourself before Key Clarity, it's left alone either way. Changes apply to the active key right away; running sessions pick them up when they restart.
 
 ## Commands
 
@@ -72,6 +85,7 @@ Right-click a key for Rename, Copy Key, Remove from Key Clarity, and Delete on P
 | `keyClarity.budgetWarningPercent` | `90` | Warn at this share of a key's budget |
 | `keyClarity.expiryWarningDays` | `3` | Warn this many days before expiry |
 | `keyClarity.claude.helperTtlMs` | `60000` | How often Claude Code re-reads the key (`0` keeps Claude Code's 5-minute default) |
+| `keyClarity.claude.disableNonessentialTraffic`, `.disableTelemetry`, `.disableExperimentalBetas`, `.disableAdaptiveThinking` | `true` | See [Claude Code defaults](#claude-code-defaults) |
 | `keyClarity.codex.providerId` | `key-clarity` | Codex provider id |
 | `keyClarity.terminal.exportVariables` | `false` | Also set `LITELLM_PROXY_*` and `OPENAI_*` in new terminals |
 
