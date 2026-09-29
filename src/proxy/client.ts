@@ -249,6 +249,23 @@ export class LiteLLMClient {
       .sort((a, b) => a.localeCompare(b));
   }
 
+  /**
+   * Input-token limit per model name, from LiteLLM's `/model_group/info` (allowed for keys
+   * limited to model calls). Models the proxy doesn't report a limit for are left out.
+   */
+  async modelContextWindows(key: string): Promise<Map<string, number>> {
+    const body = asRecord(await this.request("GET", "/model_group/info", key));
+    const data = Array.isArray(body.data) ? body.data : [];
+    const windows = new Map<string, number>();
+    for (const entry of data) {
+      const row = asRecord(entry);
+      if (typeof row.model_group === "string" && typeof row.max_input_tokens === "number" && row.max_input_tokens > 0) {
+        windows.set(row.model_group, row.max_input_tokens);
+      }
+    }
+    return windows;
+  }
+
   private async request(method: string, path: string, bearer: string | undefined, json?: unknown): Promise<unknown> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (bearer) headers.Authorization = `Bearer ${bearer}`;

@@ -40,7 +40,7 @@ Key Clarity never writes a key into Claude Code or Codex config. Each tool inste
 
 | Tool | What Key Clarity writes | How the key is read |
 | --- | --- | --- |
-| Claude Code | `~/.claude/settings.json`: `env.ANTHROPIC_BASE_URL`, `apiKeyHelper`, `env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS`, and the [default flags](#claude-code-defaults) | `apiKeyHelper` runs `cat ~/.key-clarity/claude.key` |
+| Claude Code | `~/.claude/settings.json`: `env.ANTHROPIC_BASE_URL`, `apiKeyHelper`, `env.CLAUDE_CODE_API_KEY_HELPER_TTL_MS`, the [default flags](#claude-code-defaults) and the key's [models](#claude-code-models) | `apiKeyHelper` runs `cat ~/.key-clarity/claude.key` |
 | Claude Code, one workspace | `<workspace>/.claude/settings.local.json`, same keys | `cat ~/.key-clarity/workspaces/<name>-<id>.key` |
 | Codex | `~/.codex/config.toml`: `[model_providers.key-clarity]` plus root `model_provider` (and `model`, if you pick one) | `[model_providers.key-clarity.auth]` runs `cat ~/.key-clarity/codex.key` |
 
@@ -62,6 +62,26 @@ When Key Clarity sets up Claude Code, it also turns on four variables that keep 
 | `keyClarity.claude.disableAdaptiveThinking` | `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1` | Opus 4.6 and Sonnet 4.6 use a fixed thinking budget. Newer models ignore it. |
 
 Turning a setting off puts that variable back the way it was before Key Clarity: removed, or your own value. Key Clarity never writes `0`, because Claude Code treats `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=0` as on. If you set one of these yourself before Key Clarity, it's left alone either way. Changes apply to the active key right away; running sessions pick them up when they restart.
+
+### Claude Code models
+
+Your proxy usually names Claude models its own way, such as `claude-5-sonnet`, so Claude Code's built-in `opus`, `sonnet` and `haiku` models don't match anything on it. Each time a key is used for Claude Code, Key Clarity asks the proxy which models that key may call, picks the newest Opus, Sonnet, Haiku and Fable, and points Claude Code's models at them:
+
+```json
+"ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-5-opus[1m]",
+"ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-5-sonnet[1m]",
+"ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-4.5-haiku"
+```
+
+- **`[1m]`** tells Claude Code the model has a 1M-token context window, so it doesn't compact at 200K. Claude Code removes the suffix before sending the request, so your proxy sees `claude-5-opus`. Key Clarity adds it when your proxy reports a context window of 1M or more for the model (`max_input_tokens` in LiteLLM's model info). When the proxy doesn't say, it adds it to models that always run with 1M: Sonnet 5 and later, Opus 4.7 and later, and Fable. Opus 4.6 and Sonnet 4.6 get 1M only through a beta header, so they're left at 200K.
+- With `[1m]`, Claude Code also sends the `context-1m-2025-08-07` value in the `anthropic-beta` header, even with `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` on. If your proxy rejects it, turn off `keyClarity.claude.use1mContext`.
+- A family the key can't call is left alone, or put back to its previous value if Key Clarity set it for an earlier key. Haiku also runs Claude Code's background tasks, such as session titles, so a key with a Haiku model spends less on them.
+- If the proxy can't be reached when VS Code starts, the models found last time stay in place.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `keyClarity.claude.setModels` | `true` | Set Claude Code's models from the key |
+| `keyClarity.claude.use1mContext` | `true` | Add `[1m]` to models with a 1M window |
 
 ## Commands
 
@@ -86,6 +106,7 @@ Right-click a key for Rename, Copy Key, Remove from Key Clarity, and Delete on P
 | `keyClarity.expiryWarningDays` | `3` | Warn this many days before expiry |
 | `keyClarity.claude.helperTtlMs` | `60000` | How often Claude Code re-reads the key (`0` keeps Claude Code's 5-minute default) |
 | `keyClarity.claude.disableNonessentialTraffic`, `.disableTelemetry`, `.disableExperimentalBetas`, `.disableAdaptiveThinking` | `true` | See [Claude Code defaults](#claude-code-defaults) |
+| `keyClarity.claude.setModels`, `.use1mContext` | `true` | See [Claude Code models](#claude-code-models) |
 | `keyClarity.codex.providerId` | `key-clarity` | Codex provider id |
 | `keyClarity.terminal.exportVariables` | `false` | Also set `LITELLM_PROXY_*` and `OPENAI_*` in new terminals |
 

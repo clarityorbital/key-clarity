@@ -2,13 +2,17 @@ import * as vscode from "vscode";
 import { describeError, type Controller } from "../controller";
 import { spendSummary } from "../format";
 import type { HeldKey } from "../keys/keyStore";
-import { isForbidden, isInsecureRemote, LiteLLMClient, normalizeBaseUrl, ProxyError } from "../proxy/client";
+import { displaySafe, isForbidden, isInsecureRemote, LiteLLMClient, normalizeBaseUrl, ProxyError } from "../proxy/client";
 import { claudeUserSettingsPath, claudeWorkspaceSettingsPath } from "../targets/claude";
+import { describeModelEnv } from "../targets/claudeModels";
 import type { KeyNode } from "./keysTree";
 
 const ASKED_LOGIN_PROMPT = "keyClarity.askedLoginPrompt";
 
 type UseTarget = "both" | "claude" | "claudeWorkspace" | "codex";
+
+/** Model ids come from the proxy, so the note goes through displaySafe like other proxy text. */
+const modelNote = (env: Record<string, string>) => displaySafe(describeModelEnv(env), 400);
 
 export function registerCommands(ctx: vscode.ExtensionContext, controller: Controller, refresh: () => Promise<void>): void {
   const register = (id: string, fn: (...args: any[]) => PromiseLike<unknown>) =>
@@ -122,9 +126,10 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
     const resolved = await resolveClaudeConflicts(claudeUserSettingsPath());
     if (!resolved) return undefined;
     const firstTime = !controller.managed("claude");
-    await controller.activateClaude(key.hash, resolved);
+    const models = await controller.activateClaude(key.hash, resolved);
     void offerLoginPromptOff();
-    return firstTime ? "Start a new Claude Code session to use it." : "Running Claude Code sessions switch within a minute.";
+    const note = firstTime ? "Start a new Claude Code session to use it." : "Running Claude Code sessions switch within a minute.";
+    return [modelNote(models), note].filter(Boolean).join(" ");
   };
 
   const useForClaudeWorkspace = async (key: HeldKey): Promise<string | undefined> => {
@@ -133,7 +138,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
     const resolved = await resolveClaudeConflicts(claudeWorkspaceSettingsPath(folder.uri.fsPath));
     if (!resolved) return undefined;
     const firstTime = !controller.managedWorkspace(folder.uri.fsPath);
-    await controller.activateClaudeWorkspace(key.hash, folder.uri.fsPath, resolved);
+    const models = await controller.activateClaudeWorkspace(key.hash, folder.uri.fsPath, resolved);
     if (!(await controller.workspaceSettingsIgnored(folder.uri.fsPath))) {
       const choice = await vscode.window.showWarningMessage(
         `.claude/settings.local.json in "${folder.name}" isn't ignored by git. It holds your proxy URL (not the key). Keep it out of commits?`,
@@ -143,7 +148,8 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
       if (choice === "Add to .git/info/exclude") await controller.excludeWorkspaceSettings(folder.uri.fsPath);
     }
     void offerLoginPromptOff();
-    return `${firstTime ? "Start a new Claude Code session" : "Running sessions switch within a minute"} in "${folder.name}".`;
+    const note = `${firstTime ? "Start a new Claude Code session" : "Running sessions switch within a minute"} in "${folder.name}".`;
+    return [modelNote(models), note].filter(Boolean).join(" ");
   };
 
   const useForCodex = async (key: HeldKey, forceModelPick = false): Promise<string | undefined> => {

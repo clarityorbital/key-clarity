@@ -147,6 +147,24 @@ describe("default env flags", () => {
   });
 });
 
+describe("model aliases", () => {
+  it("writes the key's models and puts back the user's own when a later key lacks one", () => {
+    const mine = `{\n  "env": {\n    "ANTHROPIC_DEFAULT_OPUS_MODEL": "my-opus"\n  }\n}\n`;
+    const bothModels = { ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-5-opus[1m]", ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-5-sonnet[1m]" };
+    const first = applyClaudeActivation(mine, { ...activation, helperTtlMs: 0, models: bothModels });
+    expect(JSON.parse(first.text).env).toMatchObject(bothModels);
+    expect(first.previous["env.ANTHROPIC_DEFAULT_OPUS_MODEL"]).toEqual({ existed: true, value: "my-opus" });
+
+    // The next key only offers Sonnet: Opus goes back to the user's value.
+    const second = applyClaudeActivation(first.text, { ...activation, helperTtlMs: 0, models: { ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-5-sonnet[1m]" } }, first.previous);
+    expect(second.released).toEqual(["env.ANTHROPIC_DEFAULT_OPUS_MODEL"]);
+    expect(JSON.parse(second.text).env).toMatchObject({ ANTHROPIC_DEFAULT_OPUS_MODEL: "my-opus", ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-5-sonnet[1m]" });
+
+    const record = Object.fromEntries(Object.entries(first.previous).filter(([k]) => !second.released.includes(k)));
+    expect(restoreClaude(second.text, mergePrevious(record, second.previous))).toBe(mine);
+  });
+});
+
 describe("conflicts", () => {
   it("finds credentials that outrank apiKeyHelper and removes them on request", () => {
     const text = `{ "env": { "ANTHROPIC_API_KEY": "sk-x", "ANTHROPIC_AUTH_TOKEN": "", "CLAUDE_CODE_USE_BEDROCK": "1", "FOO": "1" } }`;

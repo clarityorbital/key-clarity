@@ -184,6 +184,13 @@ describe("LiteLLMClient", () => {
     expect(await client.listModels(secret)).toEqual(["claude-sonnet-5", "gpt-6-sol"]);
   });
 
+  it("reads context windows, even with a key limited to model calls", async () => {
+    proxy.modelWindows.set("claude-5-opus", 1_000_000);
+    const secret = proxy.seed("windows", "user-5", { models: ["claude-5-opus", "claude-4.5-haiku"], allowed_routes: ["llm_api_routes"] });
+    // The haiku group reports null, so it is left out.
+    expect(await client.modelContextWindows(secret)).toEqual(new Map([["claude-5-opus", 1_000_000]]));
+  });
+
   it("surfaces LiteLLM error messages", async () => {
     const err = await client.keyInfo("sk-not-a-real-key").catch((e) => e);
     expect(err).toBeInstanceOf(ProxyError);

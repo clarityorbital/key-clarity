@@ -19,6 +19,7 @@ import {
   restoreClaude,
   type PreviousValues,
 } from "./targets/claude";
+import { modelEnv, pickClaudeModels, type ModelPicks } from "./targets/claudeModels";
 import { applyCodexActivation, codexConfigPath, currentModel, findProfileOverride, removeProviderTables, restoreCodex } from "./targets/codex";
 import { assertNoSymlinks, atomicWrite, backupOnce, readIfExists } from "./targets/fsUtil";
 import { claudeKeyFile, codexKeyFile, removeKeyFile, workspaceBackupFile, workspaceKeyFile, writeKeyFile } from "./targets/keyFiles";
@@ -45,6 +46,10 @@ interface Managed {
   createdFile?: boolean;
   /** Codex only: the provider id written, so a later change to the setting can't orphan or clobber tables. */
   providerId?: string;
+  /** Claude only: the models found for the key, reused if the proxy is unreachable at the next activation. */
+  claudeModels?: ModelPicks;
+  /** Claude only: the model alias variables written. */
+  modelEnv?: Record<string, string>;
 }
 
 /** Secret-storage key holding credential values removed from a settings file, for restoring later. */
@@ -223,7 +228,8 @@ export class Controller implements vscode.Disposable {
     return { inFile, inProcess, inVsCodeSetting, inUserFile };
   }
 
-  async activateClaude(hash: string, opts: { removeConflicts: boolean }): Promise<void> {
+  /** Returns the model alias variables written, if any. */
+  async activateClaude(hash: string, opts: { removeConflicts: boolean }): Promise<Record<string, string>> {
     const key = await this.requireKey(hash);
     const file = claudeUserSettingsPath();
     const keyFile = claudeKeyFile();
@@ -231,9 +237,11 @@ export class Controller implements vscode.Disposable {
     await writeKeyFile(keyFile, key.secret);
     await this.ctx.globalState.update(STATE.claude, { hash, ...managed } satisfies Managed);
     this.fireChanged();
+    return managed.modelEnv ?? {};
   }
 
-  async activateClaudeWorkspace(hash: string, folder: string, opts: { removeConflicts: boolean }): Promise<void> {
+  /** Returns the model alias variables written, if any. */
+  async activateClaudeWorkspace(hash: string, folder: string, opts: { removeConflicts: boolean }): Promise<Record<string, string>> {
     const key = await this.requireKey(hash);
     const file = claudeWorkspaceSettingsPath(folder);
     const keyFile = workspaceKeyFile(folder);
@@ -243,6 +251,23 @@ export class Controller implements vscode.Disposable {
     await writeKeyFile(keyFile, key.secret);
     await this.ctx.workspaceState.update(STATE.workspacePrefix + folder, { hash, ...managed } satisfies Managed);
     this.fireChanged();
+    return managed.modelEnv ?? {};
+  }
+
+  /**
+   * The Claude models the key may call, newest per family, with the proxy's context windows.
+   * If the proxy can't be reached, the models found for an earlier activation are reused, so
+   * a restart while offline doesn't drop them.
+   */
+  private async resolveClaudeModels(key: HeldKey, earlier: Managed | undefined): Promise<ModelPicks> {
+    const client = this.client();
+    try {
+      const ids = await client.listModels(key.secret);
+      const windows = await client.modelContextWindows(key.secret).catch(() => new Map<string, number>());
+      return pickClaudeModels(ids, windows);
+    } catch {
+      return earlier?.claudeModels ?? {};
+    }
   }
 
   private async writeClaudeSettings(
@@ -269,9 +294,11 @@ export class Controller implements vscode.Disposable {
     const config = vscode.workspace.getConfiguration("keyClarity");
     const ttl = config.get<number>("claude.helperTtlMs") ?? 60000;
     const flags = DEFAULT_ENV_FLAGS.filter((f) => config.get<boolean>(`claude.${f.setting}`) ?? true).map((f) => f.env);
+    const claudeModels = (config.get<boolean>("claude.setModels") ?? true) ? await this.resolveClaudeModels(key, earlier) : {};
+    const models = modelEnv(claudeModels, config.get<boolean>("claude.use1mContext") ?? true);
     const result = applyClaudeActivation(
       text,
-      { baseUrl: this.client().baseUrl, keyFilePath: keyFile, alias: key.alias, helperTtlMs: ttl, flags },
+      { baseUrl: this.client().baseUrl, keyFilePath: keyFile, alias: key.alias, helperTtlMs: ttl, flags, models },
       earlier?.previous,
     );
     if (result.text !== before) {
@@ -282,6 +309,8 @@ export class Controller implements vscode.Disposable {
     return {
       previous: mergePrevious(kept, { ...removed, ...result.previous }),
       createdFile: earlier ? earlier.createdFile : before === undefined,
+      claudeModels,
+      modelEnv: models,
     };
   }
 

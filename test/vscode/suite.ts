@@ -67,7 +67,11 @@ export async function run(): Promise<void> {
       assert.deepEqual(await tree.getChildren(), []);
     });
 
-    const secretA = proxy.seed("alpha", "user-1", { spend: 46, max_budget: 50 });
+    const secretA = proxy.seed("alpha", "user-1", {
+      spend: 46,
+      max_budget: 50,
+      models: ["claude-4.5-haiku", "claude-5-opus", "claude-5-sonnet", "claude-sonnet-4-5", "gpt-6-sol"],
+    });
     const resetAt = new Date(Date.now() + 10.5 * 86_400_000).toISOString();
     const secretB = proxy.seed("beta", "user-1", {
       models: ["gpt-6-sol"],
@@ -129,6 +133,30 @@ export async function run(): Promise<void> {
       for (const name of ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_TELEMETRY", "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING"]) {
         assert.equal(env[name], "1", `${name} is on by default`);
       }
+      // The newest model of each family the key may call; [1m] only on the ones with a 1M window.
+      assert.equal(env.ANTHROPIC_DEFAULT_OPUS_MODEL, "claude-5-opus[1m]");
+      assert.equal(env.ANTHROPIC_DEFAULT_SONNET_MODEL, "claude-5-sonnet[1m]");
+      assert.equal(env.ANTHROPIC_DEFAULT_HAIKU_MODEL, "claude-4.5-haiku");
+      assert.equal(env.ANTHROPIC_DEFAULT_FABLE_MODEL, undefined);
+    });
+
+    await step("follows the proxy's context window and the [1m] setting", async () => {
+      const config = () => vscode.workspace.getConfiguration("keyClarity");
+      const envNow = async () => (parseJsonc(await readFile(claudeSettings, "utf8")) as { env: Record<string, string> }).env;
+      proxy.modelWindows.set("claude-5-opus", 200_000);
+      try {
+        await controller.activateClaude(a, { removeConflicts: false });
+        assert.equal((await envNow()).ANTHROPIC_DEFAULT_OPUS_MODEL, "claude-5-opus", "the proxy says 200K");
+        await config().update("claude.use1mContext", false, vscode.ConfigurationTarget.Global);
+        await new Promise((r) => setTimeout(r, 500));
+        assert.equal((await envNow()).ANTHROPIC_DEFAULT_SONNET_MODEL, "claude-5-sonnet");
+      } finally {
+        proxy.modelWindows.delete("claude-5-opus");
+        await config().update("claude.use1mContext", undefined, vscode.ConfigurationTarget.Global);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      assert.equal((await envNow()).ANTHROPIC_DEFAULT_OPUS_MODEL, "claude-5-opus[1m]");
+      assert.equal((await envNow()).ANTHROPIC_DEFAULT_SONNET_MODEL, "claude-5-sonnet[1m]");
     });
 
     await step("turns a default flag off and on again from settings", async () => {
@@ -165,6 +193,11 @@ export async function run(): Promise<void> {
       assert.equal(codex.match(/\[model_providers\.key-clarity\]/g)?.length, 1);
       assert.match(codex, /^model = "gpt-6-sol"$/m);
       assert.match(await readFile(claudeSettings, "utf8"), /# key-clarity:beta/);
+      // Key B has no Claude models: the model variables Key Clarity wrote for key A are removed.
+      const env = (parseJsonc(await readFile(claudeSettings, "utf8")) as { env: Record<string, string> }).env;
+      assert.equal(env.ANTHROPIC_DEFAULT_OPUS_MODEL, undefined);
+      assert.equal(env.ANTHROPIC_DEFAULT_SONNET_MODEL, undefined);
+      assert.equal(env.ANTHROPIC_DEFAULT_HAIKU_MODEL, undefined);
       assert.deepEqual(controller.activeLabels(a), []);
       assert.deepEqual(controller.activeLabels(b), ["Claude", "Codex"]);
     });

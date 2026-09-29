@@ -2,7 +2,7 @@
   "name": "key-clarity",
   "displayName": "Key Clarity",
   "description": "Switch Claude Code and Codex between your LiteLLM virtual keys in one click, with spend, budget and expiry at a glance.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "clarity-orbital",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -364,6 +364,18 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Set `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1`, so Opus 4.6 and Sonnet 4.6 use a fixed thinking budget. For proxies whose upstream rejects adaptive thinking. Newer models ignore it."
+        },
+        "keyClarity.claude.setModels": {
+          "scope": "machine",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Point Claude Code's `opus`, `sonnet`, `haiku` and `fable` models at the newest of each that the key may call on your proxy (`ANTHROPIC_DEFAULT_*_MODEL`). Re-checked each time a key is used for Claude Code. Turn it off to leave these variables as they were before Key Clarity."
+        },
+        "keyClarity.claude.use1mContext": {
+          "scope": "machine",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Add Claude Code's `[1m]` suffix to the models set by `#keyClarity.claude.setModels#` that have a 1M-token context window: those your proxy reports at 1M or more, or, when it doesn't say, Sonnet 5 and later, Opus 4.7 and later, and Fable. Claude Code removes the suffix before sending requests; it only tells Claude Code how much context it can use."
         },
         "keyClarity.codex.providerId": {
           "scope": "machine",

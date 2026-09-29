@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyClaudeActivation, DEFAULT_ENV_FLAGS } from "../../src/targets/claude";
+import { modelEnv, pickClaudeModels } from "../../src/targets/claudeModels";
 import { applyCodexActivation } from "../../src/targets/codex";
 import { writeKeyFile } from "../../src/targets/keyFiles";
 import { startMockProxy, type MockProxy } from "../mockProxy";
@@ -79,6 +80,30 @@ describe.skipIf(!has("claude"))("Claude Code CLI", () => {
 
     expect((await run(keyA, "alpha")).auth).toBe(keyA);
     expect((await run(keyB, "beta")).auth).toBe(keyB);
+  });
+
+  it("sends the proxy's model id for the aliases Key Clarity sets, without the [1m] suffix", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "kc-claude-models-"));
+    const configDir = path.join(home, ".claude");
+    const keyFile = path.join(home, ".key-clarity", "claude.key");
+    await mkdir(configDir, { recursive: true });
+    const env = isolatedEnv(home, { CLAUDE_CONFIG_DIR: configDir });
+    const secret = proxy.seed("models");
+    const models = modelEnv(pickClaudeModels(["claude-4.5-haiku", "claude-5-opus", "claude-5-sonnet"]), true);
+    const flags = DEFAULT_ENV_FLAGS.map((f) => f.env);
+    const { text } = applyClaudeActivation(undefined, { baseUrl: proxy.url, keyFilePath: keyFile, alias: "models", helperTtlMs: 60000, flags, models });
+    await writeFile(path.join(configDir, "settings.json"), text);
+    await writeKeyFile(keyFile, secret);
+    const ask = (alias: string) => firstModelRequest("claude", ["-p", "say hi", "--max-turns", "1", "--model", alias], env, home, "/v1/messages");
+
+    const opus = await ask("opus");
+    expect(opus.model).toBe("claude-5-opus");
+    // [1m] makes Claude Code request the 1M window with a beta value, even with experimental betas off.
+    expect(opus.beta).toMatch(/context-1m/);
+    expect((await ask("sonnet")).model).toBe("claude-5-sonnet");
+    const haiku = await ask("haiku");
+    expect(haiku.model).toBe("claude-4.5-haiku");
+    expect(haiku.beta ?? "").not.toMatch(/context-1m/);
   });
 });
 

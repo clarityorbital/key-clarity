@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { applyEdits, modify, parse, ParseError, printParseErrorCode, type JSONPath } from "jsonc-parser";
+import { MODEL_ENV_NAMES } from "./claudeModels";
 
 // Edits Claude Code's settings.json in place with jsonc-parser, so the user's formatting,
 // ordering and any other settings (hooks, MCP servers, permissions) are left untouched.
@@ -29,8 +30,11 @@ export const DEFAULT_ENV_FLAGS = [
   { setting: "disableAdaptiveThinking", env: "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING" },
 ] as const;
 
-/** Variables Key Clarity writes only when a setting asks for them, and puts back when it no longer does. */
-export const OPTIONAL_ENV: readonly string[] = [TTL_VAR, ...DEFAULT_ENV_FLAGS.map((f) => f.env)];
+/**
+ * Variables Key Clarity writes only when a setting or the active key asks for them, and puts
+ * back when it no longer does (a switch turned off, or a key without that model family).
+ */
+export const OPTIONAL_ENV: readonly string[] = [TTL_VAR, ...DEFAULT_ENV_FLAGS.map((f) => f.env), ...MODEL_ENV_NAMES];
 
 export interface ClaudeActivation {
   baseUrl: string;
@@ -40,6 +44,8 @@ export interface ClaudeActivation {
   helperTtlMs: number;
   /** Variables from DEFAULT_ENV_FLAGS to set to "1". */
   flags?: readonly string[];
+  /** Model alias variables (MODEL_ENV) and the model id each should hold. */
+  models?: Readonly<Record<string, string>>;
   platform?: NodeJS.Platform;
 }
 
@@ -108,6 +114,7 @@ function managedPaths(a: ClaudeActivation): Array<[JSONPath, unknown]> {
   ];
   if (a.helperTtlMs > 0) entries.push([["env", TTL_VAR], String(a.helperTtlMs)]);
   for (const name of a.flags ?? []) entries.push([["env", name], "1"]);
+  for (const [name, id] of Object.entries(a.models ?? {})) entries.push([["env", name], id]);
   return entries;
 }
 

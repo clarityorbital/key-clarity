@@ -40,12 +40,14 @@ export interface MockProxy {
   /** Teams by id, with the user ids of their members and any member budgets (LiteLLM's team member budget). */
   teams: Map<string, BudgetRow & { team_alias: string; members: string[]; member_budgets?: Record<string, BudgetRow> }>;
   models: string[];
+  /** `max_input_tokens` per model name for `/model_group/info`; unlisted models report null. */
+  modelWindows: Map<string, number>;
   /** Adds a key owned by `userId` and returns its secret. */
   seed(alias: string, userId?: string, extra?: Partial<Row>): string;
   /** Rows of the daily spend table: spend per key per UTC date. */
   dailySpend: Array<{ date: string; api_key: string; user_id: string; spend: number }>;
   /** Every request, with the credential from `Authorization: Bearer` or `x-api-key`. */
-  requests: Array<{ method: string; path: string; auth: string | undefined }>;
+  requests: Array<{ method: string; path: string; auth: string | undefined; model?: string; beta?: string }>;
   close(): Promise<void>;
 }
 
@@ -58,6 +60,7 @@ export async function startMockProxy(): Promise<MockProxy> {
   const dailySpend: MockProxy["dailySpend"] = [];
   const requests: MockProxy["requests"] = [];
   const models = ["claude-sonnet-5", "gpt-5.6-terra", "gpt-6-sol"];
+  const modelWindows: MockProxy["modelWindows"] = new Map();
 
   const seed = (alias: string, userId = "user-1", extra: Partial<Row> = {}) => {
     const secret = `sk-${randomBytes(12).toString("base64url")}`;
@@ -87,7 +90,14 @@ export async function startMockProxy(): Promise<MockProxy> {
     const url = new URL(req.url ?? "/", "http://localhost");
     const apiKeyHeader = req.headers["x-api-key"];
     const auth = req.headers.authorization?.replace(/^Bearer /, "") ?? (typeof apiKeyHeader === "string" ? apiKeyHeader : undefined);
-    requests.push({ method: req.method ?? "", path: url.pathname, auth });
+    const entry: MockProxy["requests"][number] = { method: req.method ?? "", path: url.pathname, auth };
+    requests.push(entry);
+    if (url.pathname === "/v1/messages") {
+      // Record what Claude Code asked for, so tests can check model ids and beta headers.
+      const beta = req.headers["anthropic-beta"];
+      entry.beta = typeof beta === "string" ? beta : undefined;
+      entry.model = (await readBody(req).catch(() => ({}))).model;
+    }
     const send = (status: number, body: unknown) => {
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(body));
@@ -101,7 +111,9 @@ export async function startMockProxy(): Promise<MockProxy> {
     const caller = auth ? rows.get(sha(auth)) : undefined;
     if (!caller) return send(401, { error: { message: "Authentication Error, Invalid proxy server token passed.", code: "401" } });
 
-    if (caller.allowed_routes.includes("llm_api_routes") && !url.pathname.startsWith("/v1/")) {
+    // LiteLLM's llm_api_routes include its model_info_routes as well as the OpenAI-style /v1 routes.
+    const modelInfoRoute = ["/model/info", "/model_group/info"].includes(url.pathname);
+    if (caller.allowed_routes.includes("llm_api_routes") && !url.pathname.startsWith("/v1/") && !modelInfoRoute) {
       return send(403, {
         error: { message: "Virtual key is not allowed to call this route. Only allowed to call routes: ['llm_api_routes']", code: "403" },
       });
@@ -192,6 +204,11 @@ export async function startMockProxy(): Promise<MockProxy> {
       const allowed = caller.models.length ? caller.models : models;
       return send(200, { object: "list", data: allowed.map((id) => ({ id, object: "model" })) });
     }
+    if (req.method === "GET" && url.pathname === "/model_group/info") {
+      const allowed = caller.models.length ? caller.models : models;
+      // LiteLLM reports max_input_tokens as a float, or null when it doesn't know the model.
+      return send(200, { data: allowed.map((id) => ({ model_group: id, providers: ["anthropic"], max_input_tokens: modelWindows.get(id) ?? null })) });
+    }
     send(404, { detail: "Not Found" });
   });
 
@@ -204,6 +221,7 @@ export async function startMockProxy(): Promise<MockProxy> {
     teams,
     dailySpend,
     models,
+    modelWindows,
     seed,
     requests,
     close: () =>

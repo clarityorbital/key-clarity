@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- Claude Code models. When a key is used for Claude Code, Key Clarity reads which models the key may call and points Claude Code's `opus`, `sonnet`, `haiku` and `fable` models at the newest of each (`ANTHROPIC_DEFAULT_*_MODEL`), so they work with your proxy's model names. The confirmation message lists them. Switching keys re-checks; a family the new key can't call goes back to its previous value.
+- `[1m]` for models with a 1M-token context window: those your proxy reports at 1M or more, or, when it doesn't say, Sonnet 5 and later, Opus 4.7 and later, and Fable. Claude Code removes the suffix before sending requests, and sends the `context-1m-2025-08-07` beta value.
+- New settings `keyClarity.claude.setModels` and `keyClarity.claude.use1mContext`, both on by default.
+
 ## 0.4.0
 
 - Claude Code defaults. Setting up Claude Code now also turns on `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` and `CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING`, so Claude Code only talks to your proxy and doesn't send features some proxies reject. Each has its own `keyClarity.claude.*` setting, on by default. Turning one off puts the variable back the way it was before Key Clarity. Keys already in use pick the defaults up when VS Code starts.
