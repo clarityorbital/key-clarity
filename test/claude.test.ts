@@ -6,6 +6,7 @@ import {
   helperCommand,
   isManagedHelper,
   mergePrevious,
+  parseSettings,
   removeEnvVars,
   restoreClaude,
 } from "../src/targets/claude";
@@ -162,6 +163,34 @@ describe("model aliases", () => {
 
     const record = Object.fromEntries(Object.entries(first.previous).filter(([k]) => !second.released.includes(k)));
     expect(restoreClaude(second.text, mergePrevious(record, second.previous))).toBe(mine);
+  });
+});
+
+describe("model menu allowlist", () => {
+  const base = { ...activation, helperTtlMs: 0 };
+
+  it("writes the key's families, replaces them on the next key, and removes them on undo", () => {
+    const first = applyClaudeActivation(existing, { ...base, availableModels: ["opus", "sonnet", "haiku"] });
+    expect(parseSettings(first.text).availableModels).toEqual(["opus", "sonnet", "haiku"]);
+    expect(first.previous.availableModels).toEqual({ existed: false });
+
+    const second = applyClaudeActivation(first.text, { ...base, availableModels: ["sonnet"] }, first.previous);
+    expect(parseSettings(second.text).availableModels).toEqual(["sonnet"]);
+    expect(restoreClaude(second.text, mergePrevious(first.previous, second.previous))).toBe(existing);
+  });
+
+  it("is removed when a later key has every family", () => {
+    const first = applyClaudeActivation(existing, { ...base, availableModels: ["opus"] });
+    const second = applyClaudeActivation(first.text, base, first.previous);
+    expect(second.released).toEqual(["availableModels"]);
+    expect(parseSettings(second.text)).not.toHaveProperty("availableModels");
+  });
+
+  it("leaves the user's own list alone", () => {
+    const mine = `{ "availableModels": ["sonnet"] }`;
+    const result = applyClaudeActivation(mine, { ...base, availableModels: ["opus", "sonnet"] });
+    expect(parseSettings(result.text).availableModels).toEqual(["sonnet"]);
+    expect(result.previous).not.toHaveProperty("availableModels");
   });
 });
 

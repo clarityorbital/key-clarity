@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- Usage chart. **Key Clarity: Show Usage** (the graph icon in the view's title bar, or right-click a key) opens spend per day stacked by model, with totals by model and by key: spend, requests, input and output tokens. Pick the last 7, 30 or 90 days, this month or last month, and all your keys or one. It reads LiteLLM's `/user/daily/activity` only when opened, when a filter changes and on **Refresh**, never in the background, and needs a key with full access. Days are UTC.
+- Claude Code's `/model` menu no longer offers models the key can't call. Claude Code lists its built-in models, such as Fable, even on a proxy without them, and picking one failed. When the key lacks a model family, Key Clarity now sets Claude Code's `availableModels` to the families the key has. New setting `keyClarity.claude.limitModelMenu`, on by default.
+
 ## 0.5.0
 
 - Claude Code models. When a key is used for Claude Code, Key Clarity reads which models the key may call and points Claude Code's `opus`, `sonnet`, `haiku` and `fable` models at the newest of each (`ANTHROPIC_DEFAULT_*_MODEL`), so they work with your proxy's model names. The confirmation message lists them. Switching keys re-checks; a family the new key can't call goes back to its previous value.

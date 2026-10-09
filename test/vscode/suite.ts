@@ -317,6 +317,20 @@ export async function run(): Promise<void> {
       assert.match(tooltip, /\| Resets \| /);
     });
 
+    await step("opens usage on demand, with one read of daily activity", async () => {
+      const before = proxy.requests.filter((r) => r.path === "/user/daily/activity").length;
+      await vscode.commands.executeCommand("keyClarity.showUsage");
+      let reads = 0;
+      for (let i = 0; i < 50 && reads === 0; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        reads = proxy.requests.filter((r) => r.path === "/user/daily/activity").length - before;
+      }
+      assert.equal(reads, 1);
+      const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+      assert.equal(tab?.label, "Key Clarity: Usage");
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    });
+
     await step("runs the refresh command without error", async () => {
       await vscode.commands.executeCommand("keyClarity.refresh");
     });

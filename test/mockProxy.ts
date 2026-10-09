@@ -45,7 +45,7 @@ export interface MockProxy {
   /** Adds a key owned by `userId` and returns its secret. */
   seed(alias: string, userId?: string, extra?: Partial<Row>): string;
   /** Rows of the daily spend table: spend per key per UTC date. */
-  dailySpend: Array<{ date: string; api_key: string; user_id: string; spend: number }>;
+  dailySpend: Array<{ date: string; api_key: string; user_id: string; spend: number; model?: string; prompt_tokens?: number; completion_tokens?: number; api_requests?: number }>;
   /** Every request, with the credential from `Authorization: Bearer` or `x-api-key`. */
   requests: Array<{ method: string; path: string; auth: string | undefined; model?: string; beta?: string }>;
   close(): Promise<void>;
@@ -137,17 +137,38 @@ export async function startMockProxy(): Promise<MockProxy> {
       return send(403, { error: { message: "Only proxy admin can be used to generate, delete, update info for new keys/users/teams.", code: "403" } });
     }
     if (req.method === "GET" && url.pathname === "/user/daily/activity") {
-      const [start, end, apiKey] = ["start_date", "end_date", "api_key"].map((p) => url.searchParams.get(p));
+      const [start, end, apiKey, userId] = ["start_date", "end_date", "api_key", "user_id"].map((p) => url.searchParams.get(p));
       if (!start || !end) return send(400, { detail: { error: "Please provide start_date and end_date" } });
+      if (userId && userId !== caller.user_id) return send(403, { detail: { error: "Non-admin users can only view their own spend data." } });
       const page = Number(url.searchParams.get("page") ?? 1);
       const pageSize = Number(url.searchParams.get("page_size") ?? 50);
-      // Non-admins only see their own user's spend. Like the proxy, the total covers this page alone.
-      const rows = dailySpend.filter((r) => r.user_id === caller.user_id && (!apiKey || r.api_key === apiKey) && r.date >= start && r.date <= end);
-      const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
-      const total_spend = pageRows.reduce((sum, r) => sum + r.spend, 0);
+      // Non-admins only see their own user's spend. Like the proxy, rows are paged newest date first,
+      // each page is grouped by date on its own, and the total covers this page alone.
+      const matching = dailySpend
+        .filter((r) => r.user_id === caller.user_id && (!apiKey || r.api_key === apiKey) && r.date >= start && r.date <= end)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      const pageRows = matching.slice((page - 1) * pageSize, page * pageSize);
+      const metrics = (r: (typeof dailySpend)[number]) => ({
+        spend: r.spend,
+        prompt_tokens: r.prompt_tokens ?? 0,
+        completion_tokens: r.completion_tokens ?? 0,
+        api_requests: r.api_requests ?? 0,
+      });
+      const sum = (a: Record<string, number> | undefined, b: Record<string, number>) =>
+        Object.fromEntries(Object.entries(b).map(([k, v]) => [k, (a?.[k] ?? 0) + v]));
+      const byDate = new Map<string, { date: string; metrics: Record<string, number>; breakdown: { model_groups: Record<string, any>; api_keys: Record<string, any> } }>();
+      for (const r of pageRows) {
+        let day = byDate.get(r.date);
+        if (!day) byDate.set(r.date, (day = { date: r.date, metrics: {}, breakdown: { model_groups: {}, api_keys: {} } }));
+        day.metrics = sum(day.metrics, metrics(r));
+        if (r.model) day.breakdown.model_groups[r.model] = { metrics: sum(day.breakdown.model_groups[r.model]?.metrics, metrics(r)), metadata: {} };
+        const k = day.breakdown.api_keys[r.api_key];
+        day.breakdown.api_keys[r.api_key] = { metrics: sum(k?.metrics, metrics(r)), metadata: { key_alias: rows.get(r.api_key)?.key_alias ?? null, team_id: null } };
+      }
+      const total_spend = pageRows.reduce((total, r) => total + r.spend, 0);
       return send(200, {
-        results: [],
-        metadata: { total_spend, page, total_pages: Math.ceil(rows.length / pageSize), has_more: page * pageSize < rows.length },
+        results: [...byDate.values()],
+        metadata: { total_spend, page, total_pages: Math.ceil(matching.length / pageSize), has_more: page * pageSize < matching.length },
       });
     }
     if (req.method === "GET" && url.pathname === "/team/info") {

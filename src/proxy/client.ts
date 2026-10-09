@@ -1,6 +1,8 @@
 // Minimal client for the LiteLLM proxy's key-management and model endpoints.
 // Kept free of `vscode` imports so it can be unit-tested against a mock server.
 
+import { addActivityPage, buildReport, newAccumulator, type UsageReport } from "./usage";
+
 /** A spend limit, on a key, a user or a team. */
 export interface Budget {
   /** Spend in the current budget period; LiteLLM resets it to 0 when the period ends. */
@@ -160,6 +162,22 @@ export class LiteLLMClient {
       if (metadata.has_more !== true) break;
     }
     return total;
+  }
+
+  /**
+   * Spend per day, model and key from `startDate` through `endDate` (UTC dates), for the user that owns
+   * `authKey`, or for one key with `keyHash`. `userId` keeps an admin's key to the admin's own spend;
+   * without it LiteLLM gives admins every user's. Reads up to 20 pages of 1000 rows.
+   */
+  async usage(authKey: string, opts: { startDate: string; endDate: string; keyHash?: string; userId?: string | null }): Promise<UsageReport> {
+    const acc = newAccumulator();
+    for (let page = 1; page <= 20; page++) {
+      const params = new URLSearchParams({ start_date: opts.startDate, end_date: opts.endDate, page_size: "1000", page: String(page) });
+      if (opts.keyHash) params.set("api_key", opts.keyHash);
+      if (opts.userId) params.set("user_id", opts.userId);
+      if (!addActivityPage(acc, await this.request("GET", `/user/daily/activity?${params}`, authKey))) break;
+    }
+    return buildReport(acc, opts.startDate, opts.endDate);
   }
 
   /**

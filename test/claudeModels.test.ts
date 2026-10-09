@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeModelEnv, hasNative1m, modelEnv, parseClaudeModel, pickClaudeModels } from "../src/targets/claudeModels";
+import { describeModelEnv, hasNative1m, modelEnv, parseClaudeModel, pickClaudeModels, pickerAllowlist } from "../src/targets/claudeModels";
 
 describe("parseClaudeModel", () => {
   it("reads family and version from common proxy spellings", () => {
@@ -75,5 +75,13 @@ describe("modelEnv", () => {
       "Models: opus → claude-5-opus (1M context), sonnet → claude-5-sonnet (1M context), haiku → claude-4.5-haiku.",
     );
     expect(describeModelEnv({})).toBe("");
+  });
+});
+
+describe("pickerAllowlist", () => {
+  it("lists the key's families, and nothing when it has all or none", () => {
+    expect(pickerAllowlist(pickClaudeModels(["claude-5-sonnet", "claude-5-opus", "claude-4.5-haiku", "gpt-6-sol"]))).toEqual(["opus", "sonnet", "haiku"]);
+    expect(pickerAllowlist(pickClaudeModels(["claude-5-opus", "claude-5-sonnet", "claude-4.5-haiku", "claude-fable-5"]))).toBeUndefined();
+    expect(pickerAllowlist(pickClaudeModels(["gpt-6-sol"]))).toBeUndefined();
   });
 });

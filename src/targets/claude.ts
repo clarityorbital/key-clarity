@@ -36,6 +36,12 @@ export const DEFAULT_ENV_FLAGS = [
  */
 export const OPTIONAL_ENV: readonly string[] = [TTL_VAR, ...DEFAULT_ENV_FLAGS.map((f) => f.env), ...MODEL_ENV_NAMES];
 
+/** Claude Code's allowlist for its `/model` menu, set from the key's model families. */
+export const MODEL_LIST = "availableModels";
+
+/** Every path written only when asked for, as dotted paths. */
+const OPTIONAL_PATHS: readonly string[] = [...OPTIONAL_ENV.map((n) => `env.${n}`), MODEL_LIST];
+
 export interface ClaudeActivation {
   baseUrl: string;
   keyFilePath: string;
@@ -46,6 +52,8 @@ export interface ClaudeActivation {
   flags?: readonly string[];
   /** Model alias variables (MODEL_ENV) and the model id each should hold. */
   models?: Readonly<Record<string, string>>;
+  /** Written as `availableModels`, unless the file already has the user's own. */
+  availableModels?: readonly string[];
   platform?: NodeJS.Platform;
 }
 
@@ -115,6 +123,7 @@ function managedPaths(a: ClaudeActivation): Array<[JSONPath, unknown]> {
   if (a.helperTtlMs > 0) entries.push([["env", TTL_VAR], String(a.helperTtlMs)]);
   for (const name of a.flags ?? []) entries.push([["env", name], "1"]);
   for (const [name, id] of Object.entries(a.models ?? {})) entries.push([["env", name], id]);
+  if (a.availableModels) entries.push([[MODEL_LIST], [...a.availableModels]]);
   return entries;
 }
 
@@ -131,6 +140,9 @@ export function parseSettings(text: string | undefined): Record<string, unknown>
   }
   return value as Record<string, unknown>;
 }
+
+/** Settings values are JSON, so comparing their JSON text compares lists by content. */
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 function getPath(obj: Record<string, unknown>, p: JSONPath): unknown {
   let cur: unknown = obj;
@@ -164,7 +176,7 @@ function detectIndent(text: string): string {
  */
 export function applyClaudeActivation(
   text: string | undefined,
-  a: ClaudeActivation,
+  activation: ClaudeActivation,
   earlier: PreviousValues = {},
 ): { text: string; previous: PreviousValues; released: string[] } {
   let out = text && text.trim() ? text : "{}\n";
@@ -172,20 +184,22 @@ export function applyClaudeActivation(
   if (current.env !== undefined && (typeof current.env !== "object" || current.env === null || Array.isArray(current.env))) {
     throw new ConfigEditError(`"env" in the settings file isn't an object.`);
   }
+  // A model allowlist Key Clarity didn't write is the user's own choice: leave it.
+  const usersList = current[MODEL_LIST] !== undefined && !earlier[MODEL_LIST];
+  const a = usersList ? { ...activation, availableModels: undefined } : activation;
   const wanted = new Set(managedPaths(a).map(([p]) => p.join(".")));
   const released: string[] = [];
-  for (const name of OPTIONAL_ENV) {
-    const dotted = `env.${name}`;
+  for (const dotted of OPTIONAL_PATHS) {
     const prev = earlier[dotted];
     if (!prev || prev.inSecretStorage || wanted.has(dotted)) continue;
-    out = setPath(out, ["env", name], prev.existed ? prev.value : undefined);
+    out = setPath(out, dotted.split("."), prev.existed ? prev.value : undefined);
     released.push(dotted);
   }
   const previous: PreviousValues = {};
   if (current.env === undefined) previous[ENV_BLOCK] = { existed: false };
   for (const [p, value] of managedPaths(a)) {
     const before = getPath(current, p);
-    if (before !== value) {
+    if (!same(before, value)) {
       previous[p.join(".")] = before === undefined ? { existed: false } : { existed: true, value: before };
       out = setPath(out, p, value);
     }
@@ -193,7 +207,7 @@ export function applyClaudeActivation(
   // Verify the result round-trips before anyone writes it.
   const after = parseSettings(out);
   for (const [p, value] of managedPaths(a)) {
-    if (getPath(after, p) !== value) throw new ConfigEditError(`Could not set ${p.join(".")} in the settings file.`);
+    if (!same(getPath(after, p), value)) throw new ConfigEditError(`Could not set ${p.join(".")} in the settings file.`);
   }
   return { text: out, previous, released };
 }

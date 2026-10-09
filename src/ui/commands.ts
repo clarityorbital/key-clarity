@@ -6,6 +6,7 @@ import { displaySafe, isForbidden, isInsecureRemote, LiteLLMClient, normalizeBas
 import { claudeUserSettingsPath, claudeWorkspaceSettingsPath } from "../targets/claude";
 import { describeModelEnv } from "../targets/claudeModels";
 import type { KeyNode } from "./keysTree";
+import { UsagePanel } from "./usagePanel";
 
 const ASKED_LOGIN_PROMPT = "keyClarity.askedLoginPrompt";
 
@@ -379,6 +380,15 @@ export function registerCommands(ctx: vscode.ExtensionContext, controller: Contr
   register("keyClarity.refresh", () =>
     vscode.window.withProgress({ location: { viewId: "keyClarity.keys" } }, () => refresh()),
   );
+
+  register("keyClarity.showUsage", async (arg) => {
+    if (!controller.proxyUrl()) {
+      await vscode.commands.executeCommand("keyClarity.setupProxy");
+      return;
+    }
+    const node = arg as KeyNode | undefined;
+    UsagePanel.show(controller, node?.kind === "held" || node?.kind === "remote" ? node.key.hash : null);
+  });
 
   register("keyClarity.switchKey", async () => {
     if (!controller.proxyUrl()) {

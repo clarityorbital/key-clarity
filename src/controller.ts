@@ -19,7 +19,7 @@ import {
   restoreClaude,
   type PreviousValues,
 } from "./targets/claude";
-import { modelEnv, pickClaudeModels, type ModelPicks } from "./targets/claudeModels";
+import { modelEnv, pickClaudeModels, pickerAllowlist, type ModelPicks } from "./targets/claudeModels";
 import { applyCodexActivation, codexConfigPath, currentModel, findProfileOverride, removeProviderTables, restoreCodex } from "./targets/codex";
 import { assertNoSymlinks, atomicWrite, backupOnce, readIfExists } from "./targets/fsUtil";
 import { claudeKeyFile, codexKeyFile, removeKeyFile, workspaceBackupFile, workspaceKeyFile, writeKeyFile } from "./targets/keyFiles";
@@ -296,9 +296,10 @@ export class Controller implements vscode.Disposable {
     const flags = DEFAULT_ENV_FLAGS.filter((f) => config.get<boolean>(`claude.${f.setting}`) ?? true).map((f) => f.env);
     const claudeModels = (config.get<boolean>("claude.setModels") ?? true) ? await this.resolveClaudeModels(key, earlier) : {};
     const models = modelEnv(claudeModels, config.get<boolean>("claude.use1mContext") ?? true);
+    const availableModels = (config.get<boolean>("claude.limitModelMenu") ?? true) ? pickerAllowlist(claudeModels) : undefined;
     const result = applyClaudeActivation(
       text,
-      { baseUrl: this.client().baseUrl, keyFilePath: keyFile, alias: key.alias, helperTtlMs: ttl, flags, models },
+      { baseUrl: this.client().baseUrl, keyFilePath: keyFile, alias: key.alias, helperTtlMs: ttl, flags, models, availableModels },
       earlier?.previous,
     );
     if (result.text !== before) {

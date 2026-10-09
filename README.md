@@ -21,6 +21,7 @@ Switch Claude Code and Codex between your [LiteLLM](https://github.com/BerriAI/l
 - **Add or create keys.** Paste an existing key, or generate a new one with a name, allowed models, budget (monthly, weekly, daily or total) and expiry.
 - **One-click switching** for Claude Code, Codex, or both. This covers the VS Code panels and the `claude` and `codex` commands, because each tool's panel and CLI read the same config file.
 - **Per-workspace keys for Claude Code**, so each repo can bill to its own key.
+- **Usage chart**, like the LiteLLM UI's usage page: spend per day stacked by model, with totals by model and by key (spend, requests, tokens), for the last 7, 30 or 90 days, this month or last month, across all your keys or one. Click the graph icon in the view's title bar, or right-click a key and choose **Show Usage**. It reads the proxy only when you open it, change a filter or press **Refresh**, never in the background. It needs a key with full access (one allowed the proxy's management routes), the same as spend; days are UTC.
 - **Status bar badge**, such as `alpha · $12.40 / $50.00`. Click it to switch.
 - **Warnings** when a key in use is near its budget, near expiry, or blocked.
 - **Clean undo.** *Stop Managing Claude Code / Codex* puts your settings back the way they were.
@@ -76,12 +77,14 @@ Your proxy usually names Claude models its own way, such as `claude-5-sonnet`, s
 - **`[1m]`** tells Claude Code the model has a 1M-token context window, so it doesn't compact at 200K. Claude Code removes the suffix before sending the request, so your proxy sees `claude-5-opus`. Key Clarity adds it when your proxy reports a context window of 1M or more for the model (`max_input_tokens` in LiteLLM's model info). When the proxy doesn't say, it adds it to models that always run with 1M: Sonnet 5 and later, Opus 4.7 and later, and Fable. Opus 4.6 and Sonnet 4.6 get 1M only through a beta header, so they're left at 200K.
 - With `[1m]`, Claude Code also sends the `context-1m-2025-08-07` value in the `anthropic-beta` header, even with `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS` on. If your proxy rejects it, turn off `keyClarity.claude.use1mContext`.
 - A family the key can't call is left alone, or put back to its previous value if Key Clarity set it for an earlier key. Haiku also runs Claude Code's background tasks, such as session titles, so a key with a Haiku model spends less on them.
+- Claude Code's `/model` menu lists its built-in models whether or not your proxy has them, Fable included. When the key lacks a family, Key Clarity sets `availableModels` to the families it has, such as `["opus", "sonnet", "haiku"]`, so the menu only offers models the key can call. It's left out when the key has all four, and left alone if you've set `availableModels` yourself.
 - If the proxy can't be reached when VS Code starts, the models found last time stay in place.
 
 | Setting | Default | |
 | --- | --- | --- |
 | `keyClarity.claude.setModels` | `true` | Set Claude Code's models from the key |
 | `keyClarity.claude.use1mContext` | `true` | Add `[1m]` to models with a 1M window |
+| `keyClarity.claude.limitModelMenu` | `true` | Hide models the key can't call from `/model` |
 
 ## Commands
 
@@ -90,11 +93,12 @@ Your proxy usually names Claude models its own way, such as `claude-5-sonnet`, s
 | Key Clarity: Set Up Proxy | Set the LiteLLM proxy URL |
 | Key Clarity: Add Existing Key / Generate New Key | Store a key, or create one on the proxy |
 | Key Clarity: Switch Key | Pick a key, then Claude Code, Codex, or both |
+| Key Clarity: Show Usage | Spend per day and model, with totals by model and key |
 | Key Clarity: Choose Codex Model | Pick from the models the Codex key may call |
 | Key Clarity: Set Account Key | Optional separate key used to list and create keys |
 | Key Clarity: Stop Managing Claude Code / Codex | Undo Key Clarity's changes for that tool |
 
-Right-click a key for Rename, Copy Key, Remove from Key Clarity, and Delete on Proxy.
+Right-click a key for Show Usage, Rename, Copy Key, Remove from Key Clarity, and Delete on Proxy.
 
 ## Settings
 
@@ -106,7 +110,7 @@ Right-click a key for Rename, Copy Key, Remove from Key Clarity, and Delete on P
 | `keyClarity.expiryWarningDays` | `3` | Warn this many days before expiry |
 | `keyClarity.claude.helperTtlMs` | `60000` | How often Claude Code re-reads the key (`0` keeps Claude Code's 5-minute default) |
 | `keyClarity.claude.disableNonessentialTraffic`, `.disableTelemetry`, `.disableExperimentalBetas`, `.disableAdaptiveThinking` | `true` | See [Claude Code defaults](#claude-code-defaults) |
-| `keyClarity.claude.setModels`, `.use1mContext` | `true` | See [Claude Code models](#claude-code-models) |
+| `keyClarity.claude.setModels`, `.use1mContext`, `.limitModelMenu` | `true` | See [Claude Code models](#claude-code-models) |
 | `keyClarity.codex.providerId` | `key-clarity` | Codex provider id |
 | `keyClarity.terminal.exportVariables` | `false` | Also set `LITELLM_PROXY_*` and `OPENAI_*` in new terminals |
 

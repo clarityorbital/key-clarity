@@ -113,6 +113,16 @@ export function modelEnv(picks: ModelPicks, use1m: boolean): Record<string, stri
   return env;
 }
 
+/**
+ * Model families for Claude Code's `availableModels`, which limits its `/model` menu, or undefined
+ * when the key has every family (or none) and nothing needs hiding. Without it, Claude Code lists
+ * its built-in models, such as Fable, even when the key can't call them.
+ */
+export function pickerAllowlist(picks: ModelPicks): string[] | undefined {
+  const families = (Object.keys(MODEL_ENV) as ClaudeFamily[]).filter((f) => picks[f]);
+  return families.length === 0 || families.length === Object.keys(MODEL_ENV).length ? undefined : families;
+}
+
 /** One line for a notification, such as "Models: opus → claude-5-opus (1M context), haiku → claude-4.5-haiku." */
 export function describeModelEnv(env: Readonly<Record<string, string>>): string {
   const parts: string[] = [];

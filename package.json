@@ -2,7 +2,7 @@
   "name": "key-clarity",
   "displayName": "Key Clarity",
   "description": "Switch Claude Code and Codex between your LiteLLM virtual keys in one click, with spend, budget and expiry at a glance.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "clarity-orbital",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -105,6 +105,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "keyClarity.showUsage",
+        "title": "Show Usage",
+        "category": "Key Clarity",
+        "icon": "$(graph)"
+      },
+      {
         "command": "keyClarity.switchKey",
         "title": "Switch Key",
         "category": "Key Clarity"
@@ -194,9 +200,14 @@
           "group": "navigation@3"
         },
         {
+          "command": "keyClarity.showUsage",
+          "when": "view == keyClarity.keys && keyClarity.proxyConfigured",
+          "group": "navigation@4"
+        },
+        {
           "command": "keyClarity.setupProxy",
           "when": "view == keyClarity.keys",
-          "group": "navigation@4"
+          "group": "navigation@5"
         },
         {
           "command": "keyClarity.setAccountKey",
@@ -249,6 +260,11 @@
           "command": "keyClarity.activateCodex",
           "when": "view == keyClarity.keys && viewItem == heldKey",
           "group": "1_use@4"
+        },
+        {
+          "command": "keyClarity.showUsage",
+          "when": "view == keyClarity.keys && viewItem =~ /^(heldKey|remoteKey)$/",
+          "group": "2_edit@0"
         },
         {
           "command": "keyClarity.copyKey",
@@ -370,6 +386,12 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Point Claude Code's `opus`, `sonnet`, `haiku` and `fable` models at the newest of each that the key may call on your proxy (`ANTHROPIC_DEFAULT_*_MODEL`). Re-checked each time a key is used for Claude Code. Turn it off to leave these variables as they were before Key Clarity."
+        },
+        "keyClarity.claude.limitModelMenu": {
+          "scope": "machine",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Hide models the key can't call from Claude Code's `/model` menu, such as Fable on a key without it, by setting Claude Code's `availableModels` to the families found by `#keyClarity.claude.setModels#`. Not written when the key has every family, or when you've set `availableModels` yourself. Turn it off to leave `availableModels` as it was before Key Clarity."
         },
         "keyClarity.claude.use1mContext": {
           "scope": "machine",

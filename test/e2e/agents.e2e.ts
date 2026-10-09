@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyClaudeActivation, DEFAULT_ENV_FLAGS } from "../../src/targets/claude";
-import { modelEnv, pickClaudeModels } from "../../src/targets/claudeModels";
+import { modelEnv, pickClaudeModels, pickerAllowlist } from "../../src/targets/claudeModels";
 import { applyCodexActivation } from "../../src/targets/codex";
 import { writeKeyFile } from "../../src/targets/keyFiles";
 import { startMockProxy, type MockProxy } from "../mockProxy";
@@ -104,6 +104,54 @@ describe.skipIf(!has("claude"))("Claude Code CLI", () => {
     const haiku = await ask("haiku");
     expect(haiku.model).toBe("claude-4.5-haiku");
     expect(haiku.beta ?? "").not.toMatch(/context-1m/);
+  });
+});
+
+/** The models Claude Code's `/model` menu offers, read with the SDK's initialize request. */
+async function menuModels(env: NodeJS.ProcessEnv, cwd: string): Promise<string[]> {
+  const child = spawn("claude", ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"], { env, cwd, stdio: ["pipe", "pipe", "pipe"], detached: true });
+  child.stdin.write(JSON.stringify({ type: "control_request", request_id: "menu", request: { subtype: "initialize" } }) + "\n");
+  let output = "";
+  try {
+    for await (const chunk of child.stdout) {
+      output += chunk;
+      for (const line of output.split("\n")) {
+        if (!line.includes('"models"')) continue;
+        const models = JSON.parse(line)?.response?.response?.models;
+        if (Array.isArray(models)) return models.map((m: { value: string }) => m.value);
+      }
+    }
+    throw new Error(`No model list. CLI output:\n${output.slice(-2000)}`);
+  } finally {
+    try {
+      process.kill(-child.pid!, "SIGKILL");
+    } catch {
+      // Already exited.
+    }
+  }
+}
+
+describe.skipIf(!has("claude"))("Claude Code model menu", () => {
+  it("offers only the families the key has", async () => {
+    const home = await mkdtemp(path.join(tmpdir(), "kc-claude-menu-"));
+    const configDir = path.join(home, ".claude");
+    const keyFile = path.join(home, ".key-clarity", "claude.key");
+    await mkdir(configDir, { recursive: true });
+    const env = isolatedEnv(home, { CLAUDE_CONFIG_DIR: configDir });
+    await writeKeyFile(keyFile, proxy.seed("menu"));
+    const picks = pickClaudeModels(["claude-4.5-haiku", "claude-5-opus", "claude-5-sonnet"]);
+    const write = async (availableModels?: string[]) => {
+      const a = { baseUrl: proxy.url, keyFilePath: keyFile, alias: "menu", helperTtlMs: 60000, models: modelEnv(picks, true), availableModels };
+      await writeFile(path.join(configDir, "settings.json"), applyClaudeActivation(undefined, a).text);
+    };
+
+    // Without the allowlist Claude Code offers its built-in Fable, which this key can't call.
+    await write();
+    expect(await menuModels(env, home)).toContain("fable");
+    await write(pickerAllowlist(picks));
+    const menu = await menuModels(env, home);
+    expect(menu).toEqual(expect.arrayContaining(["opus", "sonnet", "haiku"]));
+    expect(menu).not.toContain("fable");
   });
 });
 

@@ -150,6 +150,27 @@ describe("LiteLLMClient", () => {
     ).resolves.toBe(403);
   });
 
+  it("reads usage by day, model and key, merging a day split across pages", async () => {
+    const secret = proxy.seed("usage-a", "user-14");
+    const other = hashKey(proxy.seed("usage-b", "user-14"));
+    const hash = hashKey(secret);
+    const row = (date: string, api_key: string, model: string, spend: number) =>
+      ({ date, api_key, user_id: "user-14", model, spend, prompt_tokens: 100, completion_tokens: 10, api_requests: 1 });
+    // 1,200 rows on one date, so that date spans two pages of 1,000.
+    for (let i = 0; i < 1200; i++) proxy.dailySpend.push(row("2026-09-10", i % 2 ? hash : other, i % 3 ? "claude-opus-5-5" : "claude-haiku-5-5", 0.25));
+    proxy.dailySpend.push(row("2026-09-12", hash, "claude-sonnet-5-5", 4), row("2026-09-12", hash, "x", 1), { ...row("2026-09-12", hash, "y", 9), user_id: "user-15" });
+
+    const report = await client.usage(secret, { startDate: "2026-09-09", endDate: "2026-09-12", userId: "user-14" });
+    expect(report.days.map((d) => [d.date, d.total.spend])).toEqual([["2026-09-09", 0], ["2026-09-10", 300], ["2026-09-11", 0], ["2026-09-12", 5]]);
+    expect(report.total).toMatchObject({ spend: 305, requests: 1202, inputTokens: 120200, outputTokens: 12020 });
+    expect(report.models.map(([m, u]) => [m, u.spend])).toEqual([["claude-opus-5-5", 200], ["claude-haiku-5-5", 100], ["claude-sonnet-5-5", 4], ["x", 1]]);
+    expect(report.keys.map((k) => [k.alias, k.spend])).toEqual([["usage-a", 155], ["usage-b", 150]]);
+
+    const one = await client.usage(secret, { startDate: "2026-09-12", endDate: "2026-09-12", keyHash: hash });
+    expect(one.total.spend).toBe(5);
+    await expect(client.usage(secret, { startDate: "2026-09-12", endDate: "2026-09-12", userId: "user-15" })).rejects.toMatchObject({ status: 403 });
+  });
+
   it("lists the user's keys with hashes that match sha256 of the secret", async () => {
     const secret = proxy.seed("beta", "user-2");
     proxy.seed("gamma", "user-2");
