@@ -2,14 +2,16 @@
 
 Switch Claude Code and Codex between your [LiteLLM](https://github.com/BerriAI/litellm) virtual keys in one click, and see each key's spend, budget and expiry without leaving VS Code.
 
-> Status: early (0.1.0). Not on the Marketplace yet.
-
 ## Install
 
-1. Download `key-clarity.vsix` from the [latest release](https://github.com/clarityorbital/key-clarity/releases/latest).
-2. In VS Code, open the Extensions view, click **…** at the top, choose **Install from VSIX…**, and pick the file.
-   From a terminal instead: `code --install-extension key-clarity.vsix`.
+Install **Key Clarity** from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=clarity-orbital.key-clarity):
+
+1. In VS Code, open the Extensions view (`Ctrl+Shift+X`, or `Cmd+Shift+X` on macOS).
+2. Search for **Key Clarity** and click **Install** on the one published by Clarity Orbital.
+   From a terminal instead: `code --install-extension clarity-orbital.key-clarity`.
 3. Look for the key icon (**Key Clarity**) in the Activity Bar. If it isn't there, run **Developer: Reload Window**.
+
+**From a VSIX instead** (for an editor without the Marketplace, or a machine that can't reach it): download `key-clarity.vsix` from the [latest release](https://github.com/clarityorbital/key-clarity/releases/latest). In the Extensions view, click **…** at the top, choose **Install from VSIX…**, and pick the file, or run `code --install-extension key-clarity.vsix`.
 
 **Dev containers and SSH:** install from a window connected to the container or host, where Claude Code and Codex run. Key Clarity runs there and edits the config files on that machine.
 
