@@ -1,7 +1,7 @@
 // Runs test/vscode/suite.ts inside a real, headless VS Code with an isolated profile,
 // isolated Claude/Codex config homes, and a temporary git workspace.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,13 @@ const workspace = path.join(sandbox, "workspace");
 mkdirSync(workspace);
 execFileSync("git", ["init", "-q", workspace]);
 
+// Keep the developer's git config out of the tests: a global ignore of .claude/settings.local.json,
+// which Claude Code users often have, would make the workspace settings look excluded already.
+const gitConfig = path.join(sandbox, "gitconfig");
+const gitIgnore = path.join(sandbox, "gitignore");
+writeFileSync(gitIgnore, "");
+writeFileSync(gitConfig, `[core]\n\texcludesFile = ${JSON.stringify(gitIgnore)}\n`);
+
 await runTests({
   extensionDevelopmentPath: root,
   extensionTestsPath: path.join(root, "dist-test/suite.js"),
@@ -35,5 +42,7 @@ await runTests({
     CODEX_HOME: path.join(sandbox, "codex"),
     KEY_CLARITY_HOME: path.join(sandbox, "key-clarity"),
     KC_TEST_WORKSPACE: workspace,
+    GIT_CONFIG_GLOBAL: gitConfig,
+    GIT_CONFIG_NOSYSTEM: "1",
   },
 });
