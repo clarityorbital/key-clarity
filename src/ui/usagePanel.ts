@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 import { describeError, type Controller } from "../controller";
 import { isForbidden } from "../proxy/client";
+import { isRejected, rejectedKeyMessage } from "../proxy/keyStatus";
 import { periodRange, USAGE_PERIODS, type UsagePeriod } from "../proxy/usage";
 import { renderUsageHtml, type UsageViewState } from "../usageView";
 
@@ -72,18 +73,46 @@ export class UsagePanel {
   private async fetch(period: UsagePeriod, keyHash: string | null) {
     const client = this.controller.client();
     const account = await this.controller.accountKey();
-    if (!account) throw new Error("Add a key first, or set an account key, so Key Clarity can read usage from the proxy.");
+    if (!account) {
+      // With keys held, none was picked because the proxy rejected them all.
+      if ((await this.controller.store.list()).length) throw new Error(rejectedKeyMessage({ kind: "none" }));
+      throw new Error("Add a key first, or set an account key, so Key Clarity can read usage from the proxy.");
+    }
     const { start, end } = periodRange(period);
-    // Without a user id, LiteLLM shows an admin's key every user's spend.
-    const userId = this.controller.owner?.userId ?? (await client.keyInfo(account)).userId;
-    const opts = { startDate: start, endDate: end, keyHash: keyHash ?? undefined, userId };
+    try {
+      // Without a user id, LiteLLM shows an admin's key every user's spend.
+      const userId = this.controller.owner?.userId ?? (await client.keyInfo(account)).userId;
+      const opts = { startDate: start, endDate: end, keyHash: keyHash ?? undefined, userId };
+      return await this.fetchUsage(account, opts);
+    } catch (err) {
+      if (isRejected(err)) throw new Error(await this.rejectedMessage(account));
+      throw err;
+    }
+  }
+
+  /** Names the rejected key and what to do about it. */
+  private async rejectedMessage(account: string): Promise<string> {
+    if ((await this.controller.store.getAccountKey()) === account) return rejectedKeyMessage({ kind: "account", secret: account });
+    const held = (await this.controller.store.list()).find((k) => k.secret === account);
+    return held ? rejectedKeyMessage({ kind: "held", alias: held.alias, secret: account }) : rejectedKeyMessage({ kind: "none" });
+  }
+
+  private async fetchUsage(account: string, opts: { startDate: string; endDate: string; keyHash?: string; userId: string | null }) {
+    const client = this.controller.client();
+    const keyHash = opts.keyHash;
     try {
       return await client.usage(account, opts);
     } catch (err) {
       // A held key with full access can still read its own usage when the account key can't.
       const held = keyHash ? await this.controller.store.get(keyHash) : undefined;
       if (!isForbidden(err) || !held || held.secret === account) throw err;
-      return await client.usage(held.secret, { ...opts, userId: null });
+      try {
+        return await client.usage(held.secret, { ...opts, userId: null });
+      } catch (heldErr) {
+        // Name the held key, not the account key, which the proxy did recognize.
+        if (isRejected(heldErr)) throw new Error(rejectedKeyMessage({ kind: "held", alias: held.alias, secret: held.secret }));
+        throw heldErr;
+      }
     }
   }
 

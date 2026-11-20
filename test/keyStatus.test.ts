@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hashKey } from "../src/keys/keyStore";
 import { LiteLLMClient } from "../src/proxy/client";
-import { fetchKeyStatus } from "../src/proxy/keyStatus";
+import { fetchKeyStatus, pickAccountKey, rejectedKeyMessage } from "../src/proxy/keyStatus";
 import { startMockProxy, type MockProxy } from "./mockProxy";
 
 let proxy: MockProxy;
@@ -42,5 +42,42 @@ describe("fetchKeyStatus", () => {
   it("reports an invalid key as an error", async () => {
     const status = await fetchKeyStatus(client, "sk-not-a-real-key-000");
     expect(status.error).toMatch(/401/);
+  });
+});
+
+describe("pickAccountKey", () => {
+  const dead = "sk-deleted-or-regenerated-0000";
+
+  it("picks the first key that can read key info", async () => {
+    const limitedKey = proxy.seed("model-calls-only", "u5", limited);
+    const full = proxy.seed("full", "u5");
+    expect(await pickAccountKey(client, [limitedKey, full])).toBe(full);
+  });
+
+  it("never falls back to a key the proxy rejects", async () => {
+    const limitedKey = proxy.seed("model-calls-only", "u6", limited);
+    expect(await pickAccountKey(client, [dead, limitedKey])).toBe(limitedKey);
+  });
+
+  it("returns nothing when the proxy rejects every key", async () => {
+    expect(await pickAccountKey(client, [dead])).toBeUndefined();
+    expect(await pickAccountKey(client, [])).toBeUndefined();
+  });
+
+  it("keeps the first key when the proxy can't be reached", async () => {
+    const offline = new LiteLLMClient("http://127.0.0.1:1", fetch, 500);
+    expect(await pickAccountKey(offline, ["sk-a-000000000", "sk-b-000000000"])).toBe("sk-a-000000000");
+  });
+});
+
+describe("rejectedKeyMessage", () => {
+  it("names an explicit account key and how to replace it", () => {
+    const msg = rejectedKeyMessage({ kind: "account", secret: "sk-abcdefghIGuA" });
+    expect(msg).toContain("sk-...IGuA");
+    expect(msg).toMatch(/Set Account Key/);
+  });
+
+  it("says every held key was rejected", () => {
+    expect(rejectedKeyMessage({ kind: "none" })).toMatch(/doesn't recognize any of your keys/);
   });
 });

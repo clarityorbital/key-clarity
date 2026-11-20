@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { sharedBudgets, windowStart, type SharedBudget } from "./format";
 import { KeyStore, type HeldKey } from "./keys/keyStore";
 import { LiteLLMClient, ProxyError, type KeyInfo, type OwnerBudgets, type RemoteKey } from "./proxy/client";
-import { fetchKeyStatus, type KeyStatus } from "./proxy/keyStatus";
+import { fetchKeyStatus, pickAccountKey, type KeyStatus } from "./proxy/keyStatus";
 import {
   applyClaudeActivation,
   claudeUserSettingsPath,
@@ -102,7 +102,8 @@ export class Controller implements vscode.Disposable {
   /**
    * The key used to read spend, list keys and create keys: the account key if set, else the first
    * held key the proxy lets read key info, trying the Claude and Codex keys first. Keys limited to
-   * model calls can't, so picking one of them would hide spend and other keys.
+   * model calls can't, so picking one of them would hide spend and other keys. A key the proxy
+   * rejects is never picked; with every key rejected there is none.
    */
   async accountKey(): Promise<string | undefined> {
     const explicit = await this.store.getAccountKey();
@@ -114,18 +115,7 @@ export class Controller implements vscode.Disposable {
       return i === -1 ? preferred.length : i;
     };
     const ordered = [...keys].sort((a, b) => rank(a.hash) - rank(b.hash));
-    if (this.proxyUrl()) {
-      const client = this.client();
-      for (const k of ordered) {
-        try {
-          await client.keyInfo(k.secret);
-          return k.secret;
-        } catch (err) {
-          // Unreachable proxy: trying the other keys would only wait out more timeouts.
-          if (err instanceof ProxyError && err.status === null) break;
-        }
-      }
-    }
+    if (this.proxyUrl()) return pickAccountKey(this.client(), ordered.map((k) => k.secret));
     return ordered[0]?.secret;
   }
 

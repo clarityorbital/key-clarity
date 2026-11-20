@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Fixed: when one of your keys had been deleted or regenerated, or came from a different proxy, the usage chart could fail with a 401 from the proxy, and your user and team budgets and other keys on the proxy could go missing. Key Clarity used that key anyway when no other key could read spend. It now skips keys the proxy rejects.
+- When the proxy rejects the key used to read usage, the usage chart now names that key and says what to do: set a current account key, or remove the dead key and add a current one.
+
 ## 0.6.0
 
 - Usage chart. **Key Clarity: Show Usage** (the graph icon in the view's title bar, or right-click a key) opens spend per day stacked by model, with totals by model and by key: spend, requests, input and output tokens. Pick the last 7, 30 or 90 days, this month or last month, and all your keys or one. It reads LiteLLM's `/user/daily/activity` only when opened, when a filter changes and on **Refresh**, never in the background, and needs a key with full access. Days are UTC.
